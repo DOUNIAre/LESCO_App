@@ -362,7 +362,7 @@ interface ApiService {
 
 object RetrofitInstance {
     // Replace this IP with your PC's local network IP where the backend is running
-    private const val BASE_URL = "http://192.168.100.5:8000/"
+    private const val BASE_URL = ""
 
     val api: ApiService by lazy {
         Retrofit.Builder()
