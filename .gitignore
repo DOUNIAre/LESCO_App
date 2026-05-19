@@ -1,0 +1,26 @@
+# === Sensitive Credentials ===
+.env
+**/local.properties
+**/secrets.xml
+
+# === IDE files ===
+.idea/
+*.iml
+.vscode/
+
+# === Python / Backend Build Files ===
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+
+# === Android / Frontend Build Files ===
+**/build/
+**/.gradle/
+**/.kotlin/
+
+# === Crash & Log files ===
+*.log
+**/*.log
