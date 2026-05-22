@@ -830,7 +830,15 @@ def get_house_history(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_user)
 ):
-    results = db.query(
+    # Determine if user is owner
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == house_id
+    ).first()
+
+    is_owner = membership and membership.role == "owner"
+
+    base_query = db.query(
         models.DeviceActionHistory,
         models.SmartDevice.name.label("device_name"),
         models.User.name.label("user_name"),
@@ -838,9 +846,21 @@ def get_house_history(
     ).join(models.SmartDevice, models.DeviceActionHistory.device_id == models.SmartDevice.id) \
      .outerjoin(models.User, models.DeviceActionHistory.user_id == models.User.id) \
      .join(models.Room, models.SmartDevice.room_id == models.Room.id) \
-     .filter(models.Room.house_id == house_id) \
-     .order_by(models.DeviceActionHistory.timestamp.desc()).all()
-    
+     .filter(models.Room.house_id == house_id)
+
+    if not is_owner:
+        # Non-owner: only see history for devices in their assigned rooms OR shared rooms
+        assigned_room_ids = [
+            a.room_id for a in db.query(models.RoomAssignment).filter(
+                models.RoomAssignment.user_id == current_user.id
+            ).all()
+        ]
+        base_query = base_query.filter(
+            (models.Room.id.in_(assigned_room_ids)) | (models.Room.room_type == "shared")
+        )
+
+    results = base_query.order_by(models.DeviceActionHistory.timestamp.desc()).all()
+
     # Flatten results for Pydantic
     history = []
     for row in results:
@@ -849,7 +869,7 @@ def get_house_history(
         h.user_name = row.user_name
         h.room_name = row.room_name
         history.append(h)
-    
+
     return history
 
 
