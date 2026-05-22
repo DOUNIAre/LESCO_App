@@ -337,7 +337,8 @@ def add_device(
         device_type=device.device_type,
         room_id=room_id,
         status=False,
-        value=0
+        value=0,
+        created_by=current_user.id
     )
     db.add(new_device)
     db.commit()
@@ -421,6 +422,12 @@ def toggle_device(
                 raise HTTPException(status_code=403, detail="Access Denied: You are not assigned to this personal room.")
 
     # Conflict detection: if >1 user in room, trigger resolver
+    # Safety rule check first (Hard safety constraints must never be bypassed)
+    is_safe, msg = rules.check_all_rules(db, device.room_id, device.device_type, not device.status)
+    if not is_safe:
+        raise HTTPException(status_code=400, detail=msg)
+
+    # Conflict detection
     user_count = db.query(models.RoomAssignment).filter(
         models.RoomAssignment.room_id == device.room_id
     ).count()
@@ -429,11 +436,6 @@ def toggle_device(
             "status": "conflict_detected",
             "message": f"There are {user_count} users in this room. Use 'Apply Logic' to resolve."
         }
-
-    # Safety rule check
-    is_safe, msg = rules.check_all_rules(db, device.room_id, device.device_type, not device.status)
-    if not is_safe:
-        raise HTTPException(status_code=400, detail=msg)
 
     # Execute & log
     device.status = not device.status
@@ -511,6 +513,41 @@ def set_device_value(
     return {"status": "success", "new_value": device.value}
 
 
+@app.delete("/devices/{device_id}")
+def delete_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user)
+):
+    device = db.query(models.SmartDevice).filter(models.SmartDevice.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    room = db.query(models.Room).filter(models.Room.id == device.room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == room.house_id
+    ).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
+
+    is_owner = membership.role == "owner"
+    # Owner can delete any device; member can only delete devices they created
+    if not is_owner and device.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Access Denied: Only the house owner or the device creator can remove this device.")
+
+    # Delete related history & recommendations
+    db.query(models.DeviceActionHistory).filter(models.DeviceActionHistory.device_id == device_id).delete()
+    db.query(models.Recommendation).filter(models.Recommendation.device_id == device_id).delete()
+
+    db.delete(device)
+    db.commit()
+    return {"message": "Device successfully removed"}
+
+
 @app.get("/rooms/{room_id}/apply-logic/{category}")
 def apply_conflict_resolution(
     room_id: int,
@@ -527,15 +564,21 @@ def apply_conflict_resolution(
         return {"message": "No preferences found for this category"}
 
     # Apply resolved value to all matching devices in the room (no owner_id check)
-    devices = db.query(models.SmartDevice).filter(
-        models.SmartDevice.room_id == room_id,
-        models.SmartDevice.device_type == category
-    ).all()
+    all_room_devices = db.query(models.SmartDevice).filter(models.SmartDevice.room_id == room_id).all()
+    matching_devices = [d for d in all_room_devices if d.device_type.upper() == category.upper()]
 
-    for d in devices:
+    for d in matching_devices:
+        target_status = d.status
+        if category.upper() in ["LIGHT", "AC", "HEATER", "FAN"]:
+            target_status = True if final_value > 0 else False
+
+        # Safety rule check
+        is_safe, msg = rules.check_all_rules(db, room_id, d.device_type, target_status)
+        if not is_safe:
+            raise HTTPException(status_code=400, detail=msg)
+
         d.value = int(final_value)
-        if category in ["LIGHT", "AC", "HEATER", "FAN"]:
-            d.status = True if final_value > 0 else False
+        d.status = target_status
 
     assignments = db.query(models.RoomAssignment).filter(models.RoomAssignment.room_id == room_id).all()
     assigned_user_ids = [a.user_id for a in assignments]

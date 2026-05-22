@@ -93,21 +93,61 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                         val isHvac  = device.deviceType.uppercase() in listOf("AC", "HEATER")
                         val tempVal = valueMap[device.id] ?: "22"
                         val isSetting = settingMap[device.id] ?: false
+                        val canDelete = SessionManager.isOwner() || (device.createdBy == SessionManager.userId)
 
                         GlassCard {
-                            Text(device.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                "Type: ${device.deviceType}",
-                                color = Color(0xFFBFD6D1),
-                                fontSize = 12.sp
-                            )
-                            if (isHvac) {
-                                Text(
-                                    "Current setpoint: ${device.value}°C",
-                                    color = Color(0xFFBFD6D1),
-                                    fontSize = 12.sp
-                                )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(device.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        "Type: ${device.deviceType}",
+                                        color = Color(0xFFBFD6D1),
+                                        fontSize = 12.sp
+                                    )
+                                    if (isHvac) {
+                                        Text(
+                                            "Current setpoint: ${device.value}°C",
+                                            color = Color(0xFFBFD6D1),
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                if (canDelete) {
+                                    GlassButton(
+                                        text = "Remove",
+                                        textColor = Color(0xFFFF6B6B),
+                                        containerColor = Color(0x26FF6B6B),
+                                        modifier = Modifier.width(90.dp).height(32.dp)
+                                    ) {
+                                        scope.launch {
+                                            try {
+                                                val res = RetrofitInstance.api.deleteDevice(
+                                                    token = TokenManager.getAuthHeader(),
+                                                    deviceId = device.id
+                                                )
+                                                if (res.isSuccessful) {
+                                                    // Refresh devices list
+                                                    val refreshRes = RetrofitInstance.api.getDevices(
+                                                        token = TokenManager.getAuthHeader(),
+                                                        roomId = roomId
+                                                    )
+                                                    if (refreshRes.isSuccessful && refreshRes.body() != null) {
+                                                        devices = refreshRes.body()!!
+                                                    }
+                                                } else {
+                                                    errorMsg = "Failed to remove device."
+                                                }
+                                            } catch (e: Exception) {
+                                                errorMsg = "Network error."
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
 
@@ -203,15 +243,12 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            val isOwner = SessionManager.isOwner()
-            if (isOwner) {
-                GlassButton(
-                    text = "Add Device",
-                    textColor = LescoNavy,
-                    containerColor = LescoPrimary,
-                    onClick = onAddDeviceClick
-                )
-            }
+            GlassButton(
+                text = "Add Device",
+                textColor = LescoNavy,
+                containerColor = LescoPrimary,
+                onClick = onAddDeviceClick
+            )
             Spacer(modifier = Modifier.height(16.dp))
         }
     }

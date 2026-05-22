@@ -77,6 +77,7 @@ class DeviceOut(BaseModel):
     status: bool
     value: int
     room_id: int
+    created_by: Optional[int] = None
     
     class Config:
         from_attributes = True

@@ -68,8 +68,10 @@ class SmartDevice(Base):
     status = Column(Boolean, default=False) # True = ON, False = OFF
     value = Column(Integer, default=0) # e.g., 22 degrees or 70% brightness
     room_id = Column(Integer, ForeignKey("rooms.id"))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     room = relationship("Room", back_populates="devices")
+    creator = relationship("User")
 
 class UserPreference(Base):
     __tablename__ = "user_preferences"

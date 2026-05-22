@@ -11,17 +11,18 @@ def check_all_rules(db: Session, room_id: int, target_device_type: str, target_s
 
     # 2. Only check rules if we are trying to turn a device ON
     if target_status == True:
-        for rule in all_rules:
-            # Check if this rule applies to the device we are moving
-            if rule.condition_device_type == target_device_type:
-                # Look if the 'forbidden' device is already ON in that room
-                conflict = db.query(models.SmartDevice).filter(
-                    models.SmartDevice.room_id == room_id,
-                    models.SmartDevice.device_type == rule.forbidden_device_type,
-                    models.SmartDevice.status == True
-                ).first()
+        # Get all currently active devices in this room to check in Python
+        active_devices = db.query(models.SmartDevice).filter(
+            models.SmartDevice.room_id == room_id,
+            models.SmartDevice.status == True
+        ).all()
 
-                if conflict:
-                    return False, f"Rule '{rule.name}' (Priority {rule.priority}): Cannot turn on {target_device_type} while {rule.forbidden_device_type} is running."
+        for rule in all_rules:
+            # Check if this rule applies to the device we are moving (case-insensitive)
+            if rule.condition_device_type.upper() == target_device_type.upper():
+                # Check if the forbidden device is active in this room
+                for dev in active_devices:
+                    if dev.device_type.upper() == rule.forbidden_device_type.upper():
+                        return False, f"Rule '{rule.name}' (Priority {rule.priority}): Cannot turn on {target_device_type.upper()} while {rule.forbidden_device_type.upper()} is running."
 
     return True, "Safe"
