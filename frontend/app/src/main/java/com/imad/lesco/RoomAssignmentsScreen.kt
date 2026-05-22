@@ -214,13 +214,18 @@ fun RoomAssignmentsScreen(onBack: () -> Unit) {
                                     roomId = rid,
                                     userId = uid
                                 )
-                                if (res.isSuccessful) {
+                                 if (res.isSuccessful) {
                                     val memberName = members.find { it.id == uid }?.name ?: "Member"
                                     val roomName = rooms.find { it.id == rid }?.name ?: "room"
                                     statusMsg = "$memberName unassigned from $roomName successfully."
                                     isSuccess = true
                                 } else {
-                                    statusMsg = "Unassignment failed."
+                                    val errBody = res.errorBody()?.string()
+                                    statusMsg = if (errBody != null && errBody.contains("Assignment not found")) {
+                                        "This member is not assigned to this room."
+                                    } else {
+                                        "Unassignment failed."
+                                    }
                                     isSuccess = false
                                 }
                             } catch (e: Exception) {

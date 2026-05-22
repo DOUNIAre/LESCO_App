@@ -118,36 +118,47 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                     }
                                 }
                                 if (canDelete) {
-                                    GlassButton(
-                                        text = "Remove",
-                                        textColor = Color(0xFFFF6B6B),
-                                        containerColor = Color(0x26FF6B6B),
-                                        modifier = Modifier.width(90.dp).height(32.dp)
-                                    ) {
-                                        scope.launch {
-                                            try {
-                                                val res = RetrofitInstance.api.deleteDevice(
-                                                    token = TokenManager.getAuthHeader(),
-                                                    deviceId = device.id
-                                                )
-                                                if (res.isSuccessful) {
-                                                    // Refresh devices list
-                                                    val refreshRes = RetrofitInstance.api.getDevices(
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    val res = RetrofitInstance.api.deleteDevice(
                                                         token = TokenManager.getAuthHeader(),
-                                                        roomId = roomId
+                                                        deviceId = device.id
                                                     )
-                                                    if (refreshRes.isSuccessful && refreshRes.body() != null) {
-                                                        devices = refreshRes.body()!!
+                                                    if (res.isSuccessful) {
+                                                        // Refresh devices list
+                                                        val refreshRes = RetrofitInstance.api.getDevices(
+                                                            token = TokenManager.getAuthHeader(),
+                                                            roomId = roomId
+                                                        )
+                                                        if (refreshRes.isSuccessful && refreshRes.body() != null) {
+                                                            devices = refreshRes.body()!!
+                                                        }
+                                                    } else {
+                                                        errorMsg = "Failed to remove device."
                                                     }
-                                                } else {
-                                                    errorMsg = "Failed to remove device."
+                                                } catch (e: Exception) {
+                                                    errorMsg = "Network error."
                                                 }
-                                            } catch (e: Exception) {
-                                                errorMsg = "Network error."
                                             }
                                         }
-                                    }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0x26FF6B6B),
+                                        contentColor = Color(0xFFFF6B6B)
+                                    ),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text(
+                                        text = "Remove",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
+                               }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
 
