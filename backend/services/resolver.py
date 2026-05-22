@@ -83,16 +83,34 @@ def resolve_conflicts(db: Session, room_id: int, device_type: str):
     room = db.query(models.Room).filter(models.Room.id == room_id).first()
     house_id = room.house_id if room else None
 
-    # 3. Find preferences using alias mapping (try each alias category in order)
+    # 3. Find preferences user-by-user using alias mapping
     prefs = []
     aliases = CATEGORY_ALIASES.get(device_type, [device_type])
-    for alias_cat in aliases:
-        prefs = db.query(models.UserPreference).filter(
-            models.UserPreference.user_id.in_(assigned_user_ids),
-            models.UserPreference.category == alias_cat,
-        ).all()
-        if prefs:
-            break  # Found preferences, stop searching aliases
+    
+    for uid in assigned_user_ids:
+        found = False
+        # Try to find a preference matching aliases in the HOME context first
+        for alias_cat in aliases:
+            p = db.query(models.UserPreference).filter(
+                models.UserPreference.user_id == uid,
+                models.UserPreference.category == alias_cat,
+                models.UserPreference.context == "HOME"
+            ).first()
+            if p:
+                prefs.append(p)
+                found = True
+                break
+        
+        # If not found under HOME context, try any context for that user
+        if not found:
+            for alias_cat in aliases:
+                p = db.query(models.UserPreference).filter(
+                    models.UserPreference.user_id == uid,
+                    models.UserPreference.category == alias_cat
+                ).first()
+                if p:
+                    prefs.append(p)
+                    break
 
     if not prefs:
         return None

@@ -661,7 +661,7 @@ def apply_conflict_resolution(
         db.add(notif)
 
     db.commit()
-    return {"resolved_value": final_value, "devices_updated": len(devices)}
+    return {"resolved_value": final_value, "devices_updated": len(matching_devices)}
 
 
 # ── AI & ENVIRONMENT ─────────────────────────────────────────────────────────
