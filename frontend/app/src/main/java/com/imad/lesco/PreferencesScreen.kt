@@ -52,19 +52,7 @@ fun PreferencesScreen(onBack: () -> Unit) {
             Text("Set Personal Preference", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(8.dp))
 
-            val isOwner = SessionManager.isOwner()
-            if (!isOwner) {
-                GlassCard {
-                    Text(
-                        "Note: Preference configuration is view-only for family members. Only the house owner can edit preferences.",
-                        color = Color(0xFFFFB300),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+
 
             // Custom Dropdown for Category
             GlassDropdownSelector(
@@ -118,8 +106,8 @@ fun PreferencesScreen(onBack: () -> Unit) {
             GlassButton(
                 text = if (isLoading) "Saving..." else "Save Preference",
                 textColor = LescoNavy,
-                containerColor = if (isOwner) LescoPrimary else Color.Gray,
-                enabled = isOwner && !isLoading && category.isNotBlank() && valueInput.isNotBlank()
+                containerColor = LescoPrimary,
+                enabled = !isLoading && category.isNotBlank() && valueInput.isNotBlank()
             ) {
                 val numVal = valueInput.toIntOrNull()
                 if (numVal == null) {
