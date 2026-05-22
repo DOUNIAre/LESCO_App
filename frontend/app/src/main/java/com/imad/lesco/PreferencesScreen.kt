@@ -127,6 +127,13 @@ fun PreferencesScreen(onBack: () -> Unit) {
                      isSuccess = false
                      return@GlassButton
                 }
+
+                val isTempCategory = category == "TEMPERATURE" || category == "AC" || category == "HEATER"
+                if (isTempCategory && (numVal < 16 || numVal > 28)) {
+                     statusMsg = "Temperature must be between 16°C and 28°C."
+                     isSuccess = false
+                     return@GlassButton
+                }
                 
                 scope.launch {
                     isLoading = true
