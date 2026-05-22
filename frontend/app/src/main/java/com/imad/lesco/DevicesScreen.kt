@@ -142,23 +142,22 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                                     errorMsg = "Network error."
                                                 }
                                             }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0x26FF6B6B),
-                                        contentColor = Color(0xFFFF6B6B)
-                                    ),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Text(
-                                        text = "Remove",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0x26FF6B6B),
+                                            contentColor = Color(0xFFFF6B6B)
+                                        ),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text(
+                                            text = "Remove",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
-                               }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
 
