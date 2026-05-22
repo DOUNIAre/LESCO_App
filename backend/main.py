@@ -930,6 +930,25 @@ def assign_user_to_room(
     return {"message": f"User {user.name} successfully assigned to {room.name}"}
 
 
+@app.post("/rooms/{room_id}/unassign/{user_id}")
+def unassign_user_from_room(
+    room_id: int, 
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user)
+):
+    assignment = db.query(models.RoomAssignment).filter(
+        models.RoomAssignment.room_id == room_id,
+        models.RoomAssignment.user_id == user_id
+    ).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    db.delete(assignment)
+    db.commit()
+    return {"message": "User successfully unassigned from room"}
+
+
 # ── NOTIFICATIONS ────────────────────────────────────────────────────────────
 
 @app.get("/users/{user_id}/notifications", response_model=List[schemas.NotificationOut])

@@ -150,41 +150,93 @@ fun RoomAssignmentsScreen(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            GlassButton(
-                text = "Assign Member to Room",
-                textColor = LescoNavy,
-                containerColor = if (isOwner) LescoPrimary else Color.Gray,
-                shimmerEnabled = isOwner,
-                enabled = isOwner && selectedRoomId != null && selectedMemberId != null && !loading
-            ) {
-                val uid = selectedMemberId
-                val rid = selectedRoomId
-                if (uid == null || rid == null) {
-                    statusMsg = "Please select a room and a member."
-                    isSuccess = false
-                    return@GlassButton
-                }
-                scope.launch {
-                    try {
-                        val res = RetrofitInstance.api.assignUserToRoom(
-                            token  = TokenManager.getAuthHeader(),
-                            roomId = rid,
-                            userId = uid
-                        )
-                        if (res.isSuccessful) {
-                            val memberName = members.find { it.id == uid }?.name ?: "Member"
-                            val roomName = rooms.find { it.id == rid }?.name ?: "room"
-                            statusMsg = "$memberName assigned to $roomName successfully."
-                            isSuccess = true
-                        } else {
-                            statusMsg = "Assignment failed."
+            if (isOwner) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    GlassButton(
+                        text = "Assign",
+                        textColor = LescoNavy,
+                        containerColor = LescoPrimary,
+                        shimmerEnabled = true,
+                        enabled = selectedRoomId != null && selectedMemberId != null && !loading,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val uid = selectedMemberId
+                        val rid = selectedRoomId
+                        if (uid == null || rid == null) {
+                            statusMsg = "Please select a room and a member."
                             isSuccess = false
+                            return@GlassButton
                         }
-                    } catch (e: Exception) {
-                        statusMsg = "Network error."
-                        isSuccess = false
+                        scope.launch {
+                            try {
+                                val res = RetrofitInstance.api.assignUserToRoom(
+                                    token  = TokenManager.getAuthHeader(),
+                                    roomId = rid,
+                                    userId = uid
+                                )
+                                if (res.isSuccessful) {
+                                    val memberName = members.find { it.id == uid }?.name ?: "Member"
+                                    val roomName = rooms.find { it.id == rid }?.name ?: "room"
+                                    statusMsg = "$memberName assigned to $roomName successfully."
+                                    isSuccess = true
+                                } else {
+                                    statusMsg = "Assignment failed."
+                                    isSuccess = false
+                                }
+                            } catch (e: Exception) {
+                                statusMsg = "Network error."
+                                isSuccess = false
+                            }
+                        }
+                    }
+
+                    GlassButton(
+                        text = "Unassign",
+                        textColor = LescoPrimary,
+                        containerColor = Color(0x4D3CDBC0),
+                        enabled = selectedRoomId != null && selectedMemberId != null && !loading,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val uid = selectedMemberId
+                        val rid = selectedRoomId
+                        if (uid == null || rid == null) {
+                            statusMsg = "Please select a room and a member."
+                            isSuccess = false
+                            return@GlassButton
+                        }
+                        scope.launch {
+                            try {
+                                val res = RetrofitInstance.api.unassignUserFromRoom(
+                                    token  = TokenManager.getAuthHeader(),
+                                    roomId = rid,
+                                    userId = uid
+                                )
+                                if (res.isSuccessful) {
+                                    val memberName = members.find { it.id == uid }?.name ?: "Member"
+                                    val roomName = rooms.find { it.id == rid }?.name ?: "room"
+                                    statusMsg = "$memberName unassigned from $roomName successfully."
+                                    isSuccess = true
+                                } else {
+                                    statusMsg = "Unassignment failed."
+                                    isSuccess = false
+                                }
+                            } catch (e: Exception) {
+                                statusMsg = "Network error."
+                                isSuccess = false
+                            }
+                        }
                     }
                 }
+            } else {
+                GlassButton(
+                    text = "Assign Member to Room",
+                    textColor = LescoNavy,
+                    containerColor = Color.Gray,
+                    enabled = false
+                ) {}
             }
 
             if (statusMsg.isNotEmpty()) {
