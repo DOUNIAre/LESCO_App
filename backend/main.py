@@ -261,7 +261,24 @@ def get_rooms(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_user)
 ):
-    return db.query(models.Room).filter(models.Room.house_id == house_id).all()
+    # Check if user is owner
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == house_id
+    ).first()
+    is_owner = (membership and membership.role == "owner")
+    
+    if is_owner:
+        return db.query(models.Room).filter(models.Room.house_id == house_id).all()
+    else:
+        assignments = db.query(models.RoomAssignment).filter(
+            models.RoomAssignment.user_id == current_user.id
+        ).all()
+        assigned_room_ids = {a.room_id for a in assignments}
+        return db.query(models.Room).filter(
+            models.Room.house_id == house_id,
+            (models.Room.id.in_(assigned_room_ids) | (models.Room.room_type == "shared"))
+        ).all()
 
 
 
@@ -304,10 +321,25 @@ def get_all_house_devices(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_user)
 ):
-    # Join with rooms to filter by house_id
-    devices = db.query(models.SmartDevice).join(models.Room).filter(
-        models.Room.house_id == house_id
-    ).all()
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == house_id
+    ).first()
+    is_owner = (membership and membership.role == "owner")
+
+    if is_owner:
+        devices = db.query(models.SmartDevice).join(models.Room).filter(
+            models.Room.house_id == house_id
+        ).all()
+    else:
+        assignments = db.query(models.RoomAssignment).filter(
+            models.RoomAssignment.user_id == current_user.id
+        ).all()
+        assigned_room_ids = {a.room_id for a in assignments}
+        devices = db.query(models.SmartDevice).join(models.Room).filter(
+            models.Room.house_id == house_id,
+            (models.Room.id.in_(assigned_room_ids) | (models.Room.room_type == "shared"))
+        ).all()
     return devices
 
 
@@ -445,7 +477,7 @@ def get_ai_recommendation(
             models.RoomAssignment.user_id == current_user.id
         ).all()
         assigned_room_ids = {a.room_id for a in assignments}
-        rooms = [r for r in rooms if r.id in assigned_room_ids]
+        rooms = [r for r in rooms if r.id in assigned_room_ids or r.room_type.lower() == "shared"]
 
     all_devices = []
     for room in rooms:
@@ -487,6 +519,38 @@ def get_ai_recommendation(
 
 @app.post("/feedback/")
 def submit_feedback(fb: schemas.FeedbackCreate, db: Session = Depends(get_db)):
+    # Find the recommendation to know which house this was for
+    rec = db.query(models.Recommendation).filter(
+        models.Recommendation.id == fb.recommendation_id
+    ).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    # If the recommendation affects a specific device, verify user authority
+    if rec.device_id:
+        device = db.query(models.SmartDevice).filter(models.SmartDevice.id == rec.device_id).first()
+        if device:
+            room = db.query(models.Room).filter(models.Room.id == device.room_id).first()
+            if room:
+                membership = db.query(models.Membership).filter(
+                    models.Membership.user_id == fb.user_id,
+                    models.Membership.house_id == room.house_id,
+                    models.Membership.role == "owner"
+                ).first()
+                is_owner = membership is not None
+                
+                if not is_owner:
+                    if room.room_type.lower() != "shared":
+                        assignment = db.query(models.RoomAssignment).filter(
+                            models.RoomAssignment.user_id == fb.user_id,
+                            models.RoomAssignment.room_id == room.id
+                        ).first()
+                        if not assignment:
+                            raise HTTPException(
+                                status_code=403, 
+                                detail="Access Denied: You cannot interact with recommendations for rooms you are not assigned to."
+                            )
+
     # Save feedback record
     new_fb = models.UserFeedback(
         recommendation_id=fb.recommendation_id,
@@ -494,11 +558,6 @@ def submit_feedback(fb: schemas.FeedbackCreate, db: Session = Depends(get_db)):
         response=fb.response
     )
     db.add(new_fb)
-
-    # Find the recommendation to know which house this was for
-    rec = db.query(models.Recommendation).filter(
-        models.Recommendation.id == fb.recommendation_id
-    ).first()
 
     # Feed back into the AI learning loop
     if rec and rec.house_id in _recommenders:
