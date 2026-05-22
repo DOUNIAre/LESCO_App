@@ -3,6 +3,7 @@ package com.imad.lesco
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,28 +24,19 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
     var loading  by remember { mutableStateOf(true) }
     val scope    = rememberCoroutineScope()
 
-    // Map local pour refléter le toggle immédiatement en UI
-    val statusMap = remember { mutableStateMapOf<Int, Boolean>() }
-    // Map to track per-device temperature input values
-    val valueMap  = remember { mutableStateMapOf<Int, String>() }
-    // Track whether a temperature set action is in progress per device
+    // Per-device UI state maps
+    val statusMap  = remember { mutableStateMapOf<Int, Boolean>() }
+    val valueMap   = remember { mutableStateMapOf<Int, String>() }
     val settingMap = remember { mutableStateMapOf<Int, Boolean>() }
 
-    LaunchedEffect(roomId) {
-        scope.launch {
-            try {
-                val roomsRes = RetrofitInstance.api.getRooms(
-                    token = TokenManager.getAuthHeader(),
-                    houseId = SessionManager.houseId
-                )
-                if (roomsRes.isSuccessful && roomsRes.body() != null) {
-                    val rObj = roomsRes.body()!!.find { it.id == roomId }
-                    roomName = rObj?.name ?: "Room #${roomId}"
-                }
-            } catch (_: Exception) {
-                roomName = "Room #${roomId}"
-            }
+    // Conflict resolution dialog state
+    var showConflictDialog by remember { mutableStateOf(false) }
+    var conflictDevice     by remember { mutableStateOf<DeviceResponse?>(null) }
+    var applyingResolution by remember { mutableStateOf(false) }
 
+    // Helper: reload devices from server
+    fun refreshDevices() {
+        scope.launch {
             try {
                 val res = RetrofitInstance.api.getDevices(
                     token  = TokenManager.getAuthHeader(),
@@ -54,7 +46,41 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                     devices = res.body()!!
                     devices.forEach { d ->
                         statusMap[d.id] = d.status
-                        // Pre-fill temperature with current device value or 22 default
+                        if (d.deviceType.uppercase() in listOf("AC", "HEATER")) {
+                            valueMap[d.id] = if (d.value > 0) d.value.toString() else "22"
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(roomId) {
+        scope.launch {
+            // Load room name
+            try {
+                val roomsRes = RetrofitInstance.api.getRooms(
+                    token   = TokenManager.getAuthHeader(),
+                    houseId = SessionManager.houseId
+                )
+                if (roomsRes.isSuccessful && roomsRes.body() != null) {
+                    val rObj = roomsRes.body()!!.find { it.id == roomId }
+                    roomName = rObj?.name ?: "Room #$roomId"
+                }
+            } catch (_: Exception) {
+                roomName = "Room #$roomId"
+            }
+
+            // Load devices
+            try {
+                val res = RetrofitInstance.api.getDevices(
+                    token  = TokenManager.getAuthHeader(),
+                    roomId = roomId
+                )
+                if (res.isSuccessful && res.body() != null) {
+                    devices = res.body()!!
+                    devices.forEach { d ->
+                        statusMap[d.id] = d.status
                         if (d.deviceType.uppercase() in listOf("AC", "HEATER")) {
                             valueMap[d.id] = if (d.value > 0) d.value.toString() else "22"
                         }
@@ -70,49 +96,147 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
         }
     }
 
+    // ── Conflict Resolution Dialog ────────────────────────────────────────────
+    if (showConflictDialog && conflictDevice != null) {
+        val dev = conflictDevice!!
+        AlertDialog(
+            onDismissRequest = { showConflictDialog = false },
+            shape            = RoundedCornerShape(24.dp),
+            containerColor   = Color(0xFF16252C),
+            title = {
+                Text(
+                    "⚠️ Preference Conflict",
+                    color      = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize   = 18.sp
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "Multiple family members have registered preferences for ${dev.deviceType} in this room.",
+                        color    = Color(0xFFBFD6D1),
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        "Manual overrides are blocked to prevent conflicts.\n\n" +
+                        "Tap \"Apply Logic\" to let LESCO resolve this using Weighted Median / Majority Voting.",
+                        color    = Color(0xFFBFD6D1),
+                        fontSize = 13.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        applyingResolution = true
+                        scope.launch {
+                            try {
+                                val res = RetrofitInstance.api.applyConflictResolution(
+                                    token    = TokenManager.getAuthHeader(),
+                                    roomId   = dev.roomId,
+                                    category = dev.deviceType.uppercase()
+                                )
+                                if (res.isSuccessful) {
+                                    showConflictDialog = false
+                                    conflictDevice     = null
+                                    refreshDevices()
+                                } else {
+                                    val errBody = res.errorBody()?.string() ?: ""
+                                    errorMsg = if (errBody.contains("Safety") || errBody.contains("Cannot")) {
+                                        "⛔ Safety constraint blocked resolution."
+                                    } else {
+                                        "Resolution failed. Try again."
+                                    }
+                                    showConflictDialog = false
+                                }
+                            } catch (_: Exception) {
+                                errorMsg = "Network error during resolution."
+                                showConflictDialog = false
+                            } finally {
+                                applyingResolution = false
+                            }
+                        }
+                    },
+                    enabled = !applyingResolution,
+                    colors  = ButtonDefaults.buttonColors(
+                        containerColor = LescoPrimary,
+                        contentColor   = LescoNavy
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        if (applyingResolution) "Resolving..." else "Apply Logic",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConflictDialog = false }) {
+                    Text("Cancel", color = Color(0xFFBFD6D1))
+                }
+            }
+        )
+    }
+
     ThemedScreen(onBack = onBack) {
         Column(modifier = Modifier.fillMaxSize()) {
             Text(
-                text = "Devices in $roomName",
-                color = Color.White,
-                fontSize = 22.sp,
+                text       = "Devices in $roomName",
+                color      = Color.White,
+                fontSize   = 22.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier   = Modifier.padding(bottom = 16.dp)
             )
 
+            if (errorMsg.isNotEmpty()) {
+                Text(
+                    errorMsg,
+                    color    = Color(0xFFFF4444),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
             when {
-                loading -> Text("Loading...", color = Color.White)
-                errorMsg.isNotEmpty() -> Text(errorMsg, color = Color(0xFFFF4444), fontSize = 13.sp)
+                loading       -> Text("Loading...", color = Color.White)
                 devices.isEmpty() -> Text("No devices in this room.", color = Color(0xFFBFD6D1))
                 else -> LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     itemsIndexed(devices) { _, device ->
-                        val checked = statusMap[device.id] ?: false
-                        val isHvac  = device.deviceType.uppercase() in listOf("AC", "HEATER")
-                        val tempVal = valueMap[device.id] ?: "22"
+                        val checked   = statusMap[device.id] ?: false
+                        val isHvac    = device.deviceType.uppercase() in listOf("AC", "HEATER")
+                        val tempVal   = valueMap[device.id] ?: "22"
                         val isSetting = settingMap[device.id] ?: false
                         val canDelete = SessionManager.isOwner() || (device.createdBy == SessionManager.userId)
 
                         GlassCard {
+                            // ── Device header row (name + Remove button) ──────
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier            = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Top
+                                verticalAlignment   = Alignment.Top
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(device.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        device.name,
+                                        color      = Color.White,
+                                        fontSize   = 17.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         "Type: ${device.deviceType}",
-                                        color = Color(0xFFBFD6D1),
+                                        color    = Color(0xFFBFD6D1),
                                         fontSize = 12.sp
                                     )
                                     if (isHvac) {
                                         Text(
                                             "Current setpoint: ${device.value}°C",
-                                            color = Color(0xFFBFD6D1),
+                                            color    = Color(0xFFBFD6D1),
                                             fontSize = 12.sp
                                         )
                                     }
@@ -123,18 +247,11 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                             scope.launch {
                                                 try {
                                                     val res = RetrofitInstance.api.deleteDevice(
-                                                        token = TokenManager.getAuthHeader(),
+                                                        token    = TokenManager.getAuthHeader(),
                                                         deviceId = device.id
                                                     )
                                                     if (res.isSuccessful) {
-                                                        // Refresh devices list
-                                                        val refreshRes = RetrofitInstance.api.getDevices(
-                                                            token = TokenManager.getAuthHeader(),
-                                                            roomId = roomId
-                                                        )
-                                                        if (refreshRes.isSuccessful && refreshRes.body() != null) {
-                                                            devices = refreshRes.body()!!
-                                                        }
+                                                        refreshDevices()
                                                     } else {
                                                         errorMsg = "Failed to remove device."
                                                     }
@@ -145,27 +262,23 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                         },
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = Color(0x26FF6B6B),
-                                            contentColor = Color(0xFFFF6B6B)
+                                            contentColor   = Color(0xFFFF6B6B)
                                         ),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                        shape          = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(32.dp)
+                                        modifier       = Modifier.height(32.dp)
                                     ) {
-                                        Text(
-                                            text = "Remove",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Text("Remove", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // Toggle ON/OFF row
+                            // ── Toggle ON/OFF ─────────────────────────────────
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier              = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment     = Alignment.CenterVertically
                             ) {
                                 Text(if (checked) "ON" else "OFF", color = Color.White)
                                 Switch(
@@ -175,11 +288,24 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                         scope.launch {
                                             try {
                                                 val res = RetrofitInstance.api.toggleDevice(
-                                                    token = TokenManager.getAuthHeader(),
+                                                    token    = TokenManager.getAuthHeader(),
                                                     deviceId = device.id
                                                 )
-                                                if (!res.isSuccessful) {
+                                                if (res.isSuccessful) {
+                                                    val body = res.body()
+                                                    if (body?.status == "conflict_detected") {
+                                                        // Revert optimistic toggle, show dialog
+                                                        statusMap[device.id] = !newVal
+                                                        conflictDevice     = device
+                                                        showConflictDialog = true
+                                                    }
+                                                    // else toggle succeeded, local state already correct
+                                                } else {
+                                                    val errBody = res.errorBody()?.string() ?: ""
                                                     statusMap[device.id] = !newVal
+                                                    if (errBody.contains("Safety") || errBody.contains("Cannot")) {
+                                                        errorMsg = "⛔ $errBody"
+                                                    }
                                                 }
                                             } catch (e: Exception) {
                                                 statusMap[device.id] = !newVal
@@ -195,25 +321,25 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                 )
                             }
 
-                            // Temperature row — only for AC / HEATER
+                            // ── Temperature setpoint — AC / HEATER only ───────
                             if (isHvac && checked) {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
                                     "Set Temperature (16°C – 28°C)",
-                                    color = LescoPrimary,
-                                    fontSize = 13.sp,
+                                    color      = LescoPrimary,
+                                    fontSize   = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
+                                    verticalAlignment     = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     OutlinedTextField(
-                                        value = tempVal,
+                                        value         = tempVal,
                                         onValueChange = { valueMap[device.id] = it },
-                                        label = { Text("°C", color = Color(0xFFBFD6D1)) },
-                                        singleLine = true,
+                                        label         = { Text("°C", color = Color(0xFFBFD6D1)) },
+                                        singleLine    = true,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor   = LescoPrimary,
@@ -224,23 +350,42 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                         modifier = Modifier.weight(1f)
                                     )
                                     GlassButton(
-                                        text = if (isSetting) "Setting..." else "Set",
+                                        text      = if (isSetting) "Setting..." else "Set",
                                         textColor = LescoNavy,
                                         containerColor = LescoPrimary,
-                                        enabled = !isSetting,
-                                        modifier = Modifier.width(80.dp)
+                                        enabled   = !isSetting,
+                                        modifier  = Modifier.width(80.dp)
                                     ) {
                                         val numVal = tempVal.toIntOrNull()
                                         if (numVal == null || numVal < 16 || numVal > 28) return@GlassButton
                                         settingMap[device.id] = true
                                         scope.launch {
                                             try {
-                                                RetrofitInstance.api.setDeviceValue(
+                                                val res = RetrofitInstance.api.setDeviceValue(
                                                     token    = TokenManager.getAuthHeader(),
                                                     deviceId = device.id,
                                                     body     = mapOf("value" to numVal)
                                                 )
-                                            } catch (_: Exception) {}
+                                                if (res.isSuccessful) {
+                                                    val body   = res.body()
+                                                    val status = body?.get("status")?.toString() ?: ""
+                                                    if (status == "conflict_detected") {
+                                                        // Block the set — show conflict dialog
+                                                        conflictDevice     = device
+                                                        showConflictDialog = true
+                                                    } else {
+                                                        // Accepted — refresh to show updated setpoint
+                                                        refreshDevices()
+                                                    }
+                                                } else {
+                                                    val errBody = res.errorBody()?.string() ?: ""
+                                                    if (errBody.contains("Safety") || errBody.contains("Cannot")) {
+                                                        errorMsg = "⛔ $errBody"
+                                                    }
+                                                }
+                                            } catch (_: Exception) {
+                                                errorMsg = "Network error."
+                                            }
                                             settingMap[device.id] = false
                                         }
                                     }
@@ -254,10 +399,10 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
             Spacer(modifier = Modifier.height(16.dp))
 
             GlassButton(
-                text = "Add Device",
-                textColor = LescoNavy,
+                text           = "Add Device",
+                textColor      = LescoNavy,
                 containerColor = LescoPrimary,
-                onClick = onAddDeviceClick
+                onClick        = onAddDeviceClick
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
