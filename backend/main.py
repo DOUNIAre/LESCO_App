@@ -427,6 +427,71 @@ def toggle_device(
     return {"status": "success", "new_status": device.status}
 
 
+@app.post("/devices/{device_id}/value")
+def set_device_value(
+    device_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user)
+):
+    device = db.query(models.SmartDevice).filter(models.SmartDevice.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    room = db.query(models.Room).filter(models.Room.id == device.room_id).first()
+    is_owner = False
+    if room:
+        membership = db.query(models.Membership).filter(
+            models.Membership.user_id == current_user.id,
+            models.Membership.house_id == room.house_id,
+            models.Membership.role == "owner"
+        ).first()
+        is_owner = membership is not None
+
+    if not is_owner:
+        if room and room.room_type == "shared":
+            membership = db.query(models.Membership).filter(
+                models.Membership.user_id == current_user.id,
+                models.Membership.house_id == room.house_id
+            ).first()
+            if not membership:
+                raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
+        else:
+            assignment = db.query(models.RoomAssignment).filter(
+                models.RoomAssignment.user_id == current_user.id,
+                models.RoomAssignment.room_id == device.room_id
+            ).first()
+            if not assignment:
+                raise HTTPException(status_code=403, detail="Access Denied: You are not assigned to this personal room.")
+
+    # Conflict detection: if >1 user in room, trigger resolver
+    user_count = db.query(models.RoomAssignment).filter(
+        models.RoomAssignment.room_id == device.room_id
+    ).count()
+    if user_count > 1:
+        return {
+            "status": "conflict_detected",
+            "message": f"There are {user_count} users in this room. Use 'Apply Logic' to resolve."
+        }
+
+    val = int(payload.get("value", 0))
+
+    # Safety rule check
+    is_safe, msg = rules.check_all_rules(db, device.room_id, device.device_type, device.status)
+    if not is_safe:
+        raise HTTPException(status_code=400, detail=msg)
+
+    # Execute & log
+    device.value = val
+    history = models.DeviceActionHistory(
+        device_id=device.id, user_id=current_user.id,
+        action_type="SET_VALUE", new_value=val, origin="MANUAL"
+    )
+    db.add(history)
+    db.commit()
+    return {"status": "success", "new_value": device.value}
+
+
 @app.get("/rooms/{room_id}/apply-logic/{category}")
 def apply_conflict_resolution(
     room_id: int,

@@ -2,17 +2,15 @@ package com.imad.lesco
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -27,22 +25,21 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
 
     // Map local pour refléter le toggle immédiatement en UI
     val statusMap = remember { mutableStateMapOf<Int, Boolean>() }
+    // Map to track per-device temperature input values
+    val valueMap  = remember { mutableStateMapOf<Int, String>() }
+    // Track whether a temperature set action is in progress per device
+    val settingMap = remember { mutableStateMapOf<Int, Boolean>() }
 
     LaunchedEffect(roomId) {
         scope.launch {
             try {
-                // Fetch rooms list to find the actual name of this room
                 val roomsRes = RetrofitInstance.api.getRooms(
                     token = TokenManager.getAuthHeader(),
                     houseId = SessionManager.houseId
                 )
                 if (roomsRes.isSuccessful && roomsRes.body() != null) {
                     val rObj = roomsRes.body()!!.find { it.id == roomId }
-                    if (rObj != null) {
-                        roomName = rObj.name
-                    } else {
-                        roomName = "Room #${roomId}"
-                    }
+                    roomName = rObj?.name ?: "Room #${roomId}"
                 }
             } catch (_: Exception) {
                 roomName = "Room #${roomId}"
@@ -55,7 +52,13 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                 )
                 if (res.isSuccessful && res.body() != null) {
                     devices = res.body()!!
-                    devices.forEach { statusMap[it.id] = it.status }
+                    devices.forEach { d ->
+                        statusMap[d.id] = d.status
+                        // Pre-fill temperature with current device value or 22 default
+                        if (d.deviceType.uppercase() in listOf("AC", "HEATER")) {
+                            valueMap[d.id] = if (d.value > 0) d.value.toString() else "22"
+                        }
+                    }
                 } else {
                     errorMsg = "Could not load devices."
                 }
@@ -85,24 +88,30 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    itemsIndexed(devices) { index, device ->
+                    itemsIndexed(devices) { _, device ->
                         val checked = statusMap[device.id] ?: false
+                        val isHvac  = device.deviceType.uppercase() in listOf("AC", "HEATER")
+                        val tempVal = valueMap[device.id] ?: "22"
+                        val isSetting = settingMap[device.id] ?: false
+
                         GlassCard {
                             Text(device.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                "Room: $roomName",
-                                color = Color(0xFFBFD6D1),
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                "Type: ${device.deviceType}  |  Value: ${device.value}",
+                                "Type: ${device.deviceType}",
                                 color = Color(0xFFBFD6D1),
                                 fontSize = 12.sp
                             )
+                            if (isHvac) {
+                                Text(
+                                    "Current setpoint: ${device.value}°C",
+                                    color = Color(0xFFBFD6D1),
+                                    fontSize = 12.sp
+                                )
+                            }
                             Spacer(modifier = Modifier.height(8.dp))
 
-
+                            // Toggle ON/OFF row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -112,7 +121,6 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                 Switch(
                                     checked = checked,
                                     onCheckedChange = { newVal ->
-                                        // Optimistic update
                                         statusMap[device.id] = newVal
                                         scope.launch {
                                             try {
@@ -121,7 +129,6 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                                     deviceId = device.id
                                                 )
                                                 if (!res.isSuccessful) {
-                                                    // Rollback si erreur
                                                     statusMap[device.id] = !newVal
                                                 }
                                             } catch (e: Exception) {
@@ -130,26 +137,81 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                         }
                                     },
                                     colors = SwitchDefaults.colors(
-                                        checkedThumbColor = LescoNavy,
-                                        checkedTrackColor = LescoPrimary,
+                                        checkedThumbColor   = LescoNavy,
+                                        checkedTrackColor   = LescoPrimary,
                                         uncheckedThumbColor = Color.White,
                                         uncheckedTrackColor = Color(0xFF505E69)
                                     )
                                 )
                             }
+
+                            // Temperature row — only for AC / HEATER
+                            if (isHvac && checked) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    "Set Temperature (16°C – 28°C)",
+                                    color = LescoPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = tempVal,
+                                        onValueChange = { valueMap[device.id] = it },
+                                        label = { Text("°C", color = Color(0xFFBFD6D1)) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor   = LescoPrimary,
+                                            unfocusedBorderColor = Color(0xFF505E69),
+                                            focusedTextColor     = Color.White,
+                                            unfocusedTextColor   = Color.White
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    GlassButton(
+                                        text = if (isSetting) "Setting..." else "Set",
+                                        textColor = LescoNavy,
+                                        containerColor = LescoPrimary,
+                                        enabled = !isSetting,
+                                        modifier = Modifier.width(80.dp)
+                                    ) {
+                                        val numVal = tempVal.toIntOrNull()
+                                        if (numVal == null || numVal < 16 || numVal > 28) return@GlassButton
+                                        settingMap[device.id] = true
+                                        scope.launch {
+                                            try {
+                                                RetrofitInstance.api.setDeviceValue(
+                                                    token    = TokenManager.getAuthHeader(),
+                                                    deviceId = device.id,
+                                                    body     = mapOf("value" to numVal)
+                                                )
+                                            } catch (_: Exception) {}
+                                            settingMap[device.id] = false
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
-            GlassButton(
-                text = "Add Device",
-                textColor = LescoNavy,
-                containerColor = LescoPrimary,
-                onClick = onAddDeviceClick
-            )
+
+            val isOwner = SessionManager.isOwner()
+            if (isOwner) {
+                GlassButton(
+                    text = "Add Device",
+                    textColor = LescoNavy,
+                    containerColor = LescoPrimary,
+                    onClick = onAddDeviceClick
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
     }

@@ -19,6 +19,7 @@ fun PreferencesScreen(onBack: () -> Unit) {
     var valueInput by remember { mutableStateOf("22") }
     var contextInput by remember { mutableStateOf("HOME") }
     var lightValueSelected by remember { mutableStateOf("ON") }
+    var acHeaterStatusSelected by remember { mutableStateOf("ON") }
     
     var preferences by remember { mutableStateOf<List<PreferenceResponse>>(emptyList()) }
     var statusMsg by remember { mutableStateOf("") }
@@ -63,7 +64,9 @@ fun PreferencesScreen(onBack: () -> Unit) {
                     category = it 
                     if (it == "LIGHT" || it == "TV") {
                         valueInput = if (lightValueSelected == "ON") "1" else "0"
-                    } else if (it == "TEMPERATURE" || it == "AC" || it == "HEATER") {
+                    } else if (it == "AC" || it == "HEATER") {
+                        valueInput = if (acHeaterStatusSelected == "ON") "22" else "0"
+                    } else if (it == "TEMPERATURE") {
                         valueInput = "22"
                     } else {
                         valueInput = ""
@@ -73,8 +76,9 @@ fun PreferencesScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
 
             // Conditional Value Input based on Category
-            val isBinaryCategory = category == "LIGHT" || category == "TV"
-            if (isBinaryCategory) {
+            val isBinaryOnlyCategory = category == "LIGHT" || category == "TV"
+            val isAcHeaterCategory = category == "AC" || category == "HEATER"
+            if (isBinaryOnlyCategory) {
                 GlassDropdownSelector(
                     label = "$category Preference",
                     selected = lightValueSelected,
@@ -84,10 +88,29 @@ fun PreferencesScreen(onBack: () -> Unit) {
                         valueInput = if (it == "ON") "1" else "0"
                     }
                 )
+            } else if (isAcHeaterCategory) {
+                GlassDropdownSelector(
+                    label = "$category Status",
+                    selected = acHeaterStatusSelected,
+                    options = listOf("ON", "OFF"),
+                    onSelected = {
+                        acHeaterStatusSelected = it
+                        valueInput = if (it == "ON") "22" else "0"
+                    }
+                )
+                if (acHeaterStatusSelected == "ON") {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    GlassTextField(
+                        value = valueInput,
+                        placeholder = "Desired Temperature (16°C - 28°C)",
+                        onValueChange = { valueInput = it },
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    )
+                }
             } else {
                 GlassTextField(
                     value = valueInput,
-                    placeholder = if (category == "TEMPERATURE" || category == "AC" || category == "HEATER") "Desired Temperature (e.g. 22)" else "Desired Value (e.g. 50)",
+                    placeholder = if (category == "TEMPERATURE") "Desired Temperature (e.g. 22)" else "Desired Value (e.g. 50)",
                     onValueChange = { valueInput = it },
                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                 )
@@ -116,11 +139,19 @@ fun PreferencesScreen(onBack: () -> Unit) {
                      return@GlassButton
                 }
 
-                val isTempCategory = category == "TEMPERATURE" || category == "AC" || category == "HEATER"
-                if (isTempCategory && (numVal < 16 || numVal > 28)) {
-                     statusMsg = "Temperature must be between 16°C and 28°C."
-                     isSuccess = false
-                     return@GlassButton
+                if (category == "TEMPERATURE") {
+                    if (numVal < 16 || numVal > 28) {
+                        statusMsg = "Temperature must be between 16°C and 28°C."
+                        isSuccess = false
+                        return@GlassButton
+                    }
+                }
+                if (category == "AC" || category == "HEATER") {
+                    if (numVal != 0 && (numVal < 16 || numVal > 28)) {
+                        statusMsg = "Temperature must be between 16°C and 28°C."
+                        isSuccess = false
+                        return@GlassButton
+                    }
                 }
 
                 if (category == "BRIGHTNESS" && (numVal < 0 || numVal > 100)) {
@@ -184,11 +215,14 @@ fun PreferencesScreen(onBack: () -> Unit) {
             } else {
                 preferences.forEach { pref ->
                     val isPrefBinary = pref.category.uppercase() == "LIGHT" || pref.category.uppercase() == "TV"
-                    val isPrefTemp = pref.category.uppercase() == "TEMPERATURE" || pref.category.uppercase() == "AC" || pref.category.uppercase() == "HEATER"
+                    val isPrefTemp = pref.category.uppercase() == "TEMPERATURE"
+                    val isPrefAcHeater = pref.category.uppercase() == "AC" || pref.category.uppercase() == "HEATER"
                     val displayValue = if (isPrefBinary) {
                         if (pref.value == 1) "ON" else "OFF"
                     } else if (isPrefTemp) {
                         "${pref.value} °C"
+                    } else if (isPrefAcHeater) {
+                        if (pref.value == 0) "OFF" else "ON (${pref.value} °C)"
                     } else {
                         "${pref.value}"
                     }
