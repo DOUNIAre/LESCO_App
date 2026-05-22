@@ -728,20 +728,28 @@ def get_house_summary(
             models.SmartDevice.status == True
         ).count()
 
-        # Energy saved: 0.5 kWh per accepted AI recommendation
-        device_ids = [d.id for d in r.devices]
-        saved = 0.0
-        if device_ids:
-            saved = db.query(models.UserFeedback).join(models.Recommendation).filter(
-                models.Recommendation.device_id.in_(device_ids),
+        room_devices = []
+        room_saved = 0.0
+        for d in r.devices:
+            # Energy saved per device: 0.5 kWh per accepted AI recommendation
+            d_saved = db.query(models.UserFeedback).join(models.Recommendation).filter(
+                models.Recommendation.device_id == d.id,
                 models.UserFeedback.response == True
             ).count() * 0.5
+            room_saved += d_saved
+            room_devices.append(schemas.DeviceSummary(
+                id=d.id,
+                name=d.name or d.device_type,
+                device_type=d.device_type,
+                energy_saved_kwh=d_saved
+            ))
 
-        total_savings += saved
+        total_savings += room_saved
         room_summaries.append(schemas.RoomSummary(
             id=r.id, name=r.name,
             active_devices_count=active_count,
-            energy_saved_kwh=saved
+            energy_saved_kwh=room_saved,
+            devices=room_devices
         ))
 
     return schemas.HouseSummary(

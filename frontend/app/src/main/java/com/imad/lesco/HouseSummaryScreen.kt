@@ -55,18 +55,50 @@ fun HouseSummaryScreen(onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(10.dp))
                 summary!!.rooms.forEach { room ->
                     GlassCard {
-                        Text(room.name, color = Color.White, fontWeight = FontWeight.SemiBold)
-                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(room.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             "Active devices: ${room.activeDevicesCount}",
                             color = Color(0xFFBFD6D1),
-                            fontSize = 14.sp
+                            fontSize = 13.sp
                         )
                         Text(
-                            "Energy saved: ${"%.1f".format(room.energySavedKwh)} kWh",
-                            color = Color(0xFFBFD6D1),
-                            fontSize = 14.sp
+                            "Total Room Energy saved: ${"%.1f".format(room.energySavedKwh)} kWh",
+                            color = LescoPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
                         )
+                        
+                        if (room.devices.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            androidx.compose.material3.HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Device Breakdown:",
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            room.devices.forEach { device ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = device.name,
+                                        color = Color(0xFFBFD6D1),
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = "${"%.1f".format(device.energySavedKwh)} kWh",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                 }

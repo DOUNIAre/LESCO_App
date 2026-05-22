@@ -76,7 +76,13 @@ fun AppNavigation() {
         }
         composable("dashboard") {
             DashboardScreen(
-                onOpenRooms           = { navController.navigate("rooms") },
+                onOpenRooms           = { roomId ->
+                    if (roomId == -1) {
+                        navController.navigate("rooms")
+                    } else {
+                        navController.navigate("devices/$roomId")
+                    }
+                },
                 onOpenRecommendations = { navController.navigate("recommendations") },
                 onOpenSummary         = { navController.navigate("summary") },
                 onOpenHistory         = { navController.navigate("history") },

@@ -39,7 +39,7 @@ import androidx.compose.ui.graphics.SolidColor
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    onOpenRooms: () -> Unit,
+    onOpenRooms: (Int) -> Unit,
     onOpenRecommendations: () -> Unit,
     onOpenSummary: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -167,7 +167,7 @@ fun DashboardScreen(
                         label = { Text("Rooms Management", color = Color.White) },
                         icon = { Image(painter = painterResource(id = R.drawable.room_management), contentDescription = null, modifier = Modifier.size(20.dp)) },
                         selected = false,
-                        onClick = { scope.launch { drawerState.close(); onOpenRooms() } },
+                        onClick = { scope.launch { drawerState.close(); onOpenRooms(-1) } },
                         colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -358,7 +358,7 @@ fun DashboardScreen(
                                 selectedDevice = device
                                 popupActive    = device.status
                             },
-                            onRoomClick = onOpenRooms
+                            onRoomClick = { onOpenRooms(room.id) }
                         )
                     }
                 }

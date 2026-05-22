@@ -133,6 +133,15 @@ class PPORecommender:
         # Get PPO agent proposal (normalized [0, 1])
         normalized_action, agent_confidence, log_prob = self.agent.propose(state)
         
+        # Add transition to buffer so that feedback can update it!
+        import torch
+        state_t = torch.FloatTensor(state).unsqueeze(0)
+        with torch.no_grad():
+            _, _, val_tensor = self.agent.network(state_t)
+            value_val = val_tensor.item()
+        
+        self.agent.add_transition(state, normalized_action, 0.0, False, log_prob, value_val)
+        
         # Get rule baseline
         rule_state = self._get_rule_state(env_data)
         rule_recommendation = self.rule_engine.propose_action(
@@ -244,9 +253,20 @@ class PPORecommender:
         if len(self.agent.buffer) > 0:
             self.agent.buffer.rewards[-1] += reward
         
-        # Trigger PPO update if buffer is full
-        if len(self.agent.buffer) >= self.agent.batch_size:
+        # For instant demo visualization of AI learning in one-click feedback:
+        if len(self.agent.buffer) >= 1:
+            old_batch_size = self.agent.batch_size
+            self.agent.batch_size = len(self.agent.buffer)
             metrics = self.agent.update()
+            self.agent.batch_size = old_batch_size
+            
+            # Save the trained model weights back to disk so they persist!
+            try:
+                from .config import PRETRAINED_MODEL_PATH
+                self.agent.save(PRETRAINED_MODEL_PATH)
+                print(f"[PPORecommender] Saved updated weights to {PRETRAINED_MODEL_PATH}")
+            except Exception as e:
+                print(f"[PPORecommender] Warning: could not save weights: {e}")
             return metrics
         
         return {"update_done": False}

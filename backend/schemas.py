@@ -151,12 +151,19 @@ class EnvironmentOut(BaseModel):
     class Config:
         from_attributes = True
 
+class DeviceSummary(BaseModel):
+    id: int
+    name: str
+    device_type: str
+    energy_saved_kwh: float
+
 class RoomSummary(BaseModel):
     id: int
     name: str
     active_devices_count: int # How many lights/AC are currently ON
     current_temp: Optional[int] = None
     energy_saved_kwh: float # Total energy saved in this room
+    devices: List[DeviceSummary] = []
     
 class HouseSummary(BaseModel):
     house_id: int
