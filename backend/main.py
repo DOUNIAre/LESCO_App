@@ -295,6 +295,24 @@ def add_device(
     room = db.query(models.Room).filter(models.Room.id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+        
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == room.house_id
+    ).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
+        
+    is_owner = membership.role == "owner"
+    if not is_owner:
+        if room.room_type.lower() != "shared":
+            assignment = db.query(models.RoomAssignment).filter(
+                models.RoomAssignment.user_id == current_user.id,
+                models.RoomAssignment.room_id == room.id
+            ).first()
+            if not assignment:
+                raise HTTPException(status_code=403, detail="Access Denied: You cannot add devices to personal rooms you are not assigned to.")
+
     new_device = models.SmartDevice(
         name=device.name,
         device_type=device.device_type,
