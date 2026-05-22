@@ -134,6 +134,12 @@ fun PreferencesScreen(onBack: () -> Unit) {
                      isSuccess = false
                      return@GlassButton
                 }
+
+                if (category == "BRIGHTNESS" && (numVal < 0 || numVal > 100)) {
+                     statusMsg = "Brightness must be between 0% and 100%."
+                     isSuccess = false
+                     return@GlassButton
+                }
                 
                 scope.launch {
                     isLoading = true
