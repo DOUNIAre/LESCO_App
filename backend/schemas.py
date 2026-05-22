@@ -11,6 +11,10 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
 # This is what the API sends BACK to the Android app
 class UserOut(BaseModel):
     id: int

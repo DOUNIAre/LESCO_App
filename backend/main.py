@@ -98,6 +98,25 @@ def get_my_profile(current_user: models.User = Depends(security.get_current_user
     return current_user
 
 
+@app.put("/users/me/", response_model=schemas.UserOut)
+def update_my_profile(
+    payload: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user)
+):
+    if payload.name is not None:
+        current_user.name = payload.name
+    if payload.email is not None:
+        if payload.email != current_user.email:
+            existing = db.query(models.User).filter(models.User.email == payload.email).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Email already registered")
+            current_user.email = payload.email
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
 # ── USER & HOUSE MANAGEMENT ──────────────────────────────────────────────────
 
 @app.post("/users/", response_model=schemas.UserOut)
@@ -691,13 +710,23 @@ def set_preference(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_user)
 ):
-    new_pref = models.UserPreference(
-        user_id=current_user.id,
-        category=pref.category,
-        value=pref.value,
-        context=pref.context
-    )
-    db.add(new_pref)
+    existing = db.query(models.UserPreference).filter(
+        models.UserPreference.user_id == current_user.id,
+        models.UserPreference.category == pref.category,
+        models.UserPreference.context == pref.context
+    ).first()
+
+    if existing:
+        existing.value = pref.value
+    else:
+        new_pref = models.UserPreference(
+            user_id=current_user.id,
+            category=pref.category,
+            value=pref.value,
+            context=pref.context
+        )
+        db.add(new_pref)
+        
     db.commit()
     return {"message": "Preference saved"}
 

@@ -30,6 +30,12 @@ fun ProfileScreen(onBack: () -> Unit, onPreferencesClick: () -> Unit, onHouseSet
     var errorMsg by remember { mutableStateOf("") }
     val scope   = rememberCoroutineScope()
 
+    // Editing states
+    var isEditing by remember { mutableStateOf(false) }
+    var editName by remember { mutableStateOf("") }
+    var editEmail by remember { mutableStateOf("") }
+    var isUpdating by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         scope.launch {
             try {
@@ -39,6 +45,8 @@ fun ProfileScreen(onBack: () -> Unit, onPreferencesClick: () -> Unit, onHouseSet
                     val profile = res.body()!!
                     name  = profile.name
                     email = profile.email
+                    editName = profile.name
+                    editEmail = profile.email
                 }
 
                 // 2. Get House Summary for Invite Code
@@ -61,19 +69,115 @@ fun ProfileScreen(onBack: () -> Unit, onPreferencesClick: () -> Unit, onHouseSet
         ) {
             Text("Your Profile", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
 
-            GlassCard {
-                Text("Name", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text(name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                Text("Email", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text(email, color = Color(0xFFBFD6D1), fontSize = 16.sp)
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                Text("Role", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text(if (role == "owner") "House Owner" else "Family Member", color = Color(0xFFBFD6D1), fontSize = 16.sp)
+            if (isEditing) {
+                GlassCard {
+                    Text("Name", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    GlassTextField(
+                        value = editName,
+                        placeholder = "Enter your name",
+                        onValueChange = { editName = it }
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text("Email", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    GlassTextField(
+                        value = editEmail,
+                        placeholder = "Enter your email",
+                        onValueChange = { editEmail = it }
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text("Role", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(if (role == "owner") "House Owner" else "Family Member", color = Color(0xFFBFD6D1), fontSize = 16.sp)
+                    
+                    Spacer(modifier = Modifier.height(20.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        GlassButton(
+                            text = if (isUpdating) "Saving..." else "Save",
+                            textColor = LescoNavy,
+                            containerColor = LescoPrimary,
+                            enabled = !isUpdating && editName.isNotBlank() && editEmail.isNotBlank(),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            scope.launch {
+                                isUpdating = true
+                                errorMsg = ""
+                                try {
+                                    val res = RetrofitInstance.api.updateMyProfile(
+                                        token = TokenManager.getAuthHeader(),
+                                        request = UserProfileUpdateRequest(name = editName.trim(), email = editEmail.trim())
+                                    )
+                                    if (res.isSuccessful && res.body() != null) {
+                                        val profile = res.body()!!
+                                        name = profile.name
+                                        email = profile.email
+                                        isEditing = false
+                                        Toast.makeText(context, "Profile updated!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        errorMsg = "Failed to update profile. Email might be already in use."
+                                    }
+                                } catch (e: Exception) {
+                                    errorMsg = "Network error."
+                                } finally {
+                                    isUpdating = false
+                                }
+                            }
+                        }
+                        
+                        GlassButton(
+                            text = "Cancel",
+                            textColor = Color.White,
+                            containerColor = Color.Transparent,
+                            modifier = Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+                        ) {
+                            editName = name
+                            editEmail = email
+                            isEditing = false
+                        }
+                    }
+                }
+            } else {
+                GlassCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Name", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        GlassButton(
+                            text = "EDIT",
+                            containerColor = LescoPrimary,
+                            textColor = LescoNavy,
+                            modifier = Modifier.width(80.dp).height(36.dp),
+                            onClick = {
+                                editName = name
+                                editEmail = email
+                                isEditing = true
+                            }
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text("Email", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(email, color = Color(0xFFBFD6D1), fontSize = 16.sp)
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text("Role", color = LescoPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(if (role == "owner") "House Owner" else "Family Member", color = Color(0xFFBFD6D1), fontSize = 16.sp)
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))

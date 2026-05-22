@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 @Composable
-fun PreferencesScreen(onBack: () -> Unit) {
+fun PreferencesScreen(onBack: () -> Unit, firstTime: Boolean = false, onProceed: (() -> Unit)? = null) {
     var category by remember { mutableStateOf("TEMPERATURE") }
     var valueInput by remember { mutableStateOf("22") }
     var contextInput by remember { mutableStateOf("HOME") }
@@ -42,7 +42,7 @@ fun PreferencesScreen(onBack: () -> Unit) {
         loadPreferences()
     }
 
-    ThemedScreen(onBack = onBack) {
+    ThemedScreen(onBack = if (firstTime) null else onBack) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -52,8 +52,6 @@ fun PreferencesScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             Text("Set Personal Preference", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(8.dp))
-
-
 
             // Custom Dropdown for Category
             GlassDropdownSelector(
@@ -247,9 +245,18 @@ fun PreferencesScreen(onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(10.dp))
                 }
             }
+            
+            if (firstTime && onProceed != null) {
+                Spacer(modifier = Modifier.height(24.dp))
+                GlassButton(
+                    text = "Proceed to House Setup",
+                    textColor = LescoNavy,
+                    containerColor = LescoPrimary,
+                    onClick = onProceed
+                )
+            }
+            
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
-
-

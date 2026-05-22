@@ -64,7 +64,7 @@ fun AppNavigation() {
         composable("signup") {
             SignUpScreen(
                 onBackClick     = { navController.popBackStack() },
-                onSignUpSuccess = { navController.navigate("house_setup") },
+                onSignUpSuccess = { navController.navigate("preferences?firstTime=true") },
                 onLoginClick    = { navController.navigate("login") }
             )
         }
@@ -152,8 +152,17 @@ fun AppNavigation() {
                 onHouseSetupClick = { navController.navigate("house_setup") }
             )
         }
-        composable("preferences") {
-            PreferencesScreen(onBack = { navController.popBackStack() })
+        composable("preferences?firstTime={firstTime}") { backStack ->
+            val firstTime = backStack.arguments?.getString("firstTime")?.toBoolean() ?: false
+            PreferencesScreen(
+                onBack = { navController.popBackStack() },
+                firstTime = firstTime,
+                onProceed = {
+                    navController.navigate("house_setup") {
+                        popUpTo("welcome") { inclusive = false }
+                    }
+                }
+            )
         }
         composable("notifications") {
             NotificationsScreen(onBack = { navController.popBackStack() })
