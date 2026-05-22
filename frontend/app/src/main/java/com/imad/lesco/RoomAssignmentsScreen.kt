@@ -44,7 +44,8 @@ fun RoomAssignmentsScreen(onBack: () -> Unit) {
                 }
                 
                 if (membersRes.isSuccessful && membersRes.body() != null) {
-                    members = membersRes.body()!!
+                    // Exclude the owner — this screen is for assigning regular members only
+                    members = membersRes.body()!!.filter { it.role.lowercase() != "owner" }
                     selectedMemberId = members.firstOrNull()?.id
                 }
             } catch (_: Exception) {

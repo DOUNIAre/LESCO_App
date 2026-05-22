@@ -214,6 +214,20 @@ def join_house(request: schemas.HouseJoin, db: Session = Depends(get_db)):
 
     membership = models.Membership(user_id=request.user_id, house_id=house.id, role="member")
     db.add(membership)
+
+    # Auto-assign new member to all shared rooms in this house
+    shared_rooms = db.query(models.Room).filter(
+        models.Room.house_id == house.id,
+        models.Room.room_type == "shared"
+    ).all()
+    for room in shared_rooms:
+        already_assigned = db.query(models.RoomAssignment).filter(
+            models.RoomAssignment.room_id == room.id,
+            models.RoomAssignment.user_id == request.user_id
+        ).first()
+        if not already_assigned:
+            db.add(models.RoomAssignment(room_id=room.id, user_id=request.user_id))
+
     db.commit()
     return {"message": f"Joined house '{house.name}'", "house_id": house.id}
 
@@ -267,11 +281,57 @@ def create_room(
     db.commit()
     db.refresh(new_room)
 
-    # Auto-assign the creator to the room
-    assignment = models.RoomAssignment(user_id=current_user.id, room_id=new_room.id)
-    db.add(assignment)
+    if room.room_type == "shared":
+        # Auto-assign ALL existing house members to this new shared room
+        all_memberships = db.query(models.Membership).filter(
+            models.Membership.house_id == house_id
+        ).all()
+        for m in all_memberships:
+            db.add(models.RoomAssignment(user_id=m.user_id, room_id=new_room.id))
+    else:
+        # Personal room — only assign the creator
+        db.add(models.RoomAssignment(user_id=current_user.id, room_id=new_room.id))
+
     db.commit()
     return new_room
+
+
+@app.post("/houses/{house_id}/backfill-shared-rooms")
+def backfill_shared_room_assignments(
+    house_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user)
+):
+    """One-time backfill: assign all existing house members to shared rooms they're missing."""
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == house_id
+    ).first()
+    if not membership or membership.role != "owner":
+        raise HTTPException(status_code=403, detail="Only the house owner can run this backfill.")
+
+    shared_rooms = db.query(models.Room).filter(
+        models.Room.house_id == house_id,
+        models.Room.room_type == "shared"
+    ).all()
+
+    all_memberships = db.query(models.Membership).filter(
+        models.Membership.house_id == house_id
+    ).all()
+
+    added = 0
+    for room in shared_rooms:
+        for m in all_memberships:
+            exists = db.query(models.RoomAssignment).filter(
+                models.RoomAssignment.room_id == room.id,
+                models.RoomAssignment.user_id == m.user_id
+            ).first()
+            if not exists:
+                db.add(models.RoomAssignment(room_id=room.id, user_id=m.user_id))
+                added += 1
+
+    db.commit()
+    return {"message": f"Backfill complete. {added} new assignment(s) created."}
 
 
 @app.get("/houses/{house_id}/rooms/", response_model=List[schemas.RoomOut])
