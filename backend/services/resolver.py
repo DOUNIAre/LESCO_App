@@ -11,6 +11,22 @@ from sqlalchemy.orm import Session
 import models
 
 
+# Maps device_type -> preference categories to search (in order of priority)
+# e.g. AC device resolves via "AC" prefs first, falls back to "TEMPERATURE"
+CATEGORY_ALIASES = {
+    "AC":          ["AC", "TEMPERATURE"],
+    "HEATER":      ["HEATER", "TEMPERATURE"],
+    "TEMPERATURE": ["TEMPERATURE", "AC", "HEATER"],
+    "BRIGHTNESS":  ["BRIGHTNESS"],
+    "FAN":         ["FAN"],
+    "LIGHT":       ["LIGHT"],
+    "TV":          ["TV"],
+}
+
+# Continuous (Weighted Median) device types
+CONTINUOUS_TYPES = {"TEMPERATURE", "AC", "HEATER", "BRIGHTNESS", "FAN"}
+
+
 def _weighted_median(values: list, weights: list) -> float:
     """
     Compute the true weighted median.
@@ -52,6 +68,8 @@ def resolve_conflicts(db: Session, room_id: int, device_type: str):
     Main entry point called by the API.
     Returns the resolved value (float) or None if no preferences exist.
     """
+    device_type = device_type.upper()
+
     # 1. Get users assigned to this room
     assignments = db.query(models.RoomAssignment).filter(
         models.RoomAssignment.room_id == room_id
@@ -61,23 +79,34 @@ def resolve_conflicts(db: Session, room_id: int, device_type: str):
     if not assigned_user_ids:
         return None
 
-    # 2. Get their preferences for this device category
-    prefs = db.query(models.UserPreference).filter(
-        models.UserPreference.user_id.in_(assigned_user_ids),
-        models.UserPreference.category == device_type,
-    ).all()
+    # 2. Resolve the room's house_id for weight calculation
+    room = db.query(models.Room).filter(models.Room.id == room_id).first()
+    house_id = room.house_id if room else None
+
+    # 3. Find preferences using alias mapping (try each alias category in order)
+    prefs = []
+    aliases = CATEGORY_ALIASES.get(device_type, [device_type])
+    for alias_cat in aliases:
+        prefs = db.query(models.UserPreference).filter(
+            models.UserPreference.user_id.in_(assigned_user_ids),
+            models.UserPreference.category == alias_cat,
+        ).all()
+        if prefs:
+            break  # Found preferences, stop searching aliases
 
     if not prefs:
         return None
 
-    # 3. Resolve the room's house_id for weight calculation
-    room = db.query(models.Room).filter(models.Room.id == room_id).first()
-    house_id = room.house_id if room else None
-
     # === STRATEGY A: CONTINUOUS — use Weighted Median ===
-    if device_type in ["TEMPERATURE", "AC", "BRIGHTNESS", "HEATER", "FAN"]:
-        values  = [float(p.value) for p in prefs]
-        weights = [_get_user_weight(db, p.user_id, house_id) for p in prefs]
+    if device_type in CONTINUOUS_TYPES:
+        # For AC/HEATER: exclude "OFF" (value=0) prefs from the median calculation
+        # so that a user who has TEMPERATURE=22 doesn't get averaged with someone's OFF state
+        active_prefs = [p for p in prefs if p.value > 0]
+        if not active_prefs:
+            active_prefs = prefs  # fall back to all if everyone is 0
+
+        values  = [float(p.value) for p in active_prefs]
+        weights = [_get_user_weight(db, p.user_id, house_id) for p in active_prefs]
         return _weighted_median(values, weights)
 
     # === STRATEGY B: BINARY — use Majority Voting ===

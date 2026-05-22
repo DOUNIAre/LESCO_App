@@ -542,9 +542,18 @@ def apply_conflict_resolution(
 
     # Notify all room members about the resolution
     for uid in assigned_user_ids:
+        # Human-readable resolved value
+        cat_upper = category.upper()
+        if cat_upper in {"TEMPERATURE", "AC", "HEATER"}:
+            readable = f"{int(final_value)}°C (Weighted Median)"
+        elif cat_upper in {"BRIGHTNESS"}:
+            readable = f"{int(final_value)}% (Weighted Median)"
+        else:
+            readable = "ON" if final_value > 0 else "OFF (energy saving)"
+
         notif = models.Notification(
             user_id=uid,
-            message=f"Conflict resolved in room {room.name}: {category} set to {final_value}"
+            message=f"Conflict resolved in room '{room.name}': {category} → {readable}"
         )
         db.add(notif)
 
