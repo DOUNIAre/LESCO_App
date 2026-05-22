@@ -159,7 +159,7 @@ fun ProfileScreen(onBack: () -> Unit, onPreferencesClick: () -> Unit, onHouseSet
                             text = "EDIT",
                             containerColor = LescoPrimary,
                             textColor = LescoNavy,
-                            modifier = Modifier.width(80.dp).height(36.dp),
+                            modifier = Modifier.width(110.dp).height(36.dp),
                             onClick = {
                                 editName = name
                                 editEmail = email
@@ -203,18 +203,18 @@ fun ProfileScreen(onBack: () -> Unit, onPreferencesClick: () -> Unit, onHouseSet
                                 letterSpacing = 2.sp
                             )
                             
-                            GlassButton(
-                                text = "COPY",
-                                containerColor = LescoPrimary,
-                                textColor = LescoNavy,
-                                modifier = Modifier.width(100.dp).height(36.dp),
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("LESCO Invite Code", inviteCode)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Code copied!", Toast.LENGTH_SHORT).show()
-                                }
-                            )
+                        GlassButton(
+                            text = "COPY",
+                            containerColor = LescoPrimary,
+                            textColor = LescoNavy,
+                            modifier = Modifier.width(110.dp).height(36.dp),
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("LESCO Invite Code", inviteCode)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Code copied!", Toast.LENGTH_SHORT).show()
+                            }
+                        )
                         }
                         Text(
                             "Share this code with your family members to let them join your smart home.",
