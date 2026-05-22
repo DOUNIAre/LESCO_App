@@ -129,15 +129,13 @@ fun ProfileScreen(onBack: () -> Unit, onPreferencesClick: () -> Unit, onHouseSet
             
             Spacer(modifier = Modifier.height(24.dp))
 
-            if (isOwner) {
-                GlassButton(
-                    text = "Preferences",
-                    textColor = LescoNavy,
-                    containerColor = LescoPrimary,
-                    onClick = onPreferencesClick
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+            GlassButton(
+                text = "Preferences",
+                textColor = LescoNavy,
+                containerColor = LescoPrimary,
+                onClick = onPreferencesClick
+            )
+            Spacer(modifier = Modifier.height(16.dp))
 
             GlassButton(
                 text = "Create or Join Another House",
