@@ -122,18 +122,23 @@ fun RecommendationsScreen(onBack: () -> Unit) {
 
                     // ── Feedback buttons ──
                     when (feedbackSent) {
-                        null -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        null -> Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             GlassButton(
                                 text           = "✓  Accept",
                                 textColor      = LescoNavy,
                                 containerColor = LescoPrimary,
-                                shimmerEnabled = true
+                                shimmerEnabled = true,
+                                modifier       = Modifier.weight(1f)
                             ) { sendFeedback(true) }
 
                             GlassButton(
                                 text           = "✗  Decline",
                                 textColor      = LescoPrimary,
-                                containerColor = Color(0x4D3CDBC0)
+                                containerColor = Color(0x4D3CDBC0),
+                                modifier       = Modifier.weight(1f)
                             ) { sendFeedback(false) }
                         }
                         true  -> Text(
