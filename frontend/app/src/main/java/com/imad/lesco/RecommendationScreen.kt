@@ -20,11 +20,6 @@ fun RecommendationsScreen(onBack: () -> Unit) {
     var loading        by remember { mutableStateOf(true) }
     val scope          = rememberCoroutineScope()
 
-    var simTemp by remember { mutableStateOf("38") }
-    var simWeather by remember { mutableStateOf("Sunny") }
-    var isSimulating by remember { mutableStateOf(false) }
-    var simStatusMsg by remember { mutableStateOf("") }
-
     LaunchedEffect(Unit) {
         scope.launch {
             try {
@@ -155,94 +150,6 @@ fun RecommendationsScreen(onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-            Text(
-                text      = "AI Simulation Sandbox",
-                color     = Color.White,
-                fontSize  = 18.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            
-            GlassCard {
-                Text(
-                    text = "Push a simulated extreme environmental state to test the PPO AI logic live on this house.",
-                    color = Color(0xFFBFD6D1),
-                    fontSize = 13.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                GlassTextField(
-                    value = simTemp,
-                    placeholder = "Temperature (°C)",
-                    onValueChange = { simTemp = it },
-                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                GlassTextField(
-                    value = simWeather,
-                    placeholder = "Weather Description (e.g. Sunny, Snowing)",
-                    onValueChange = { simWeather = it }
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                GlassButton(
-                    text = if (isSimulating) "Simulating..." else "Simulate & Trigger AI",
-                    textColor = LescoNavy,
-                    containerColor = LescoPrimary,
-                    enabled = !isSimulating && simTemp.isNotBlank() && simWeather.isNotBlank()
-                ) {
-                    val tempInt = simTemp.toIntOrNull()
-                    if (tempInt == null) {
-                        simStatusMsg = "Temperature must be a valid integer"
-                        return@GlassButton
-                    }
-                    
-                    scope.launch {
-                        isSimulating = true
-                        simStatusMsg = ""
-                        try {
-                            val res = RetrofitInstance.api.pushEnvironmentData(
-                                houseId = SessionManager.houseId,
-                                temp = tempInt,
-                                weatherDesc = simWeather.trim()
-                            )
-                            if (res.isSuccessful && res.body() != null) {
-                                val body = res.body()!!
-                                val recMsg = body["recommendation"] as? String
-                                simStatusMsg = if (recMsg != null) {
-                                    "Triggered! AI generated new tip: $recMsg"
-                                } else {
-                                    "Triggered! Environment saved successfully."
-                                }
-                                
-                                // Refresh current recommendation display
-                                loading = true
-                                val recRes = RetrofitInstance.api.getRecommendation(
-                                    token   = TokenManager.getAuthHeader(),
-                                    houseId = SessionManager.houseId
-                                )
-                                if (recRes.isSuccessful && recRes.body() != null) {
-                                    recommendation = recRes.body()
-                                }
-                            } else {
-                                simStatusMsg = "Failed to trigger: ${res.code()}"
-                            }
-                        } catch (e: Exception) {
-                            simStatusMsg = "Simulation error: ${e.message}"
-                        } finally {
-                            isSimulating = false
-                            loading = false
-                        }
-                    }
-                }
-                
-                if (simStatusMsg.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(simStatusMsg, color = LescoPrimary, fontSize = 13.sp)
-                }
-            }
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
