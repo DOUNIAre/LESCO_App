@@ -249,7 +249,7 @@ fun DashboardScreen(
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(48.dp))
             }
         }
     ) {
