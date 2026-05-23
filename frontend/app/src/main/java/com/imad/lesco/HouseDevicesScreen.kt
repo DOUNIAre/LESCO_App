@@ -17,6 +17,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
+private fun parseBackendError(errBody: String): String {
+    try {
+        val detailKey = "\"detail\":"
+        if (errBody.contains(detailKey)) {
+            val startIndex = errBody.indexOf(detailKey) + detailKey.length
+            var content = errBody.substring(startIndex).trim()
+            if (content.startsWith("\"")) {
+                content = content.substring(1)
+            }
+            var endIndex = -1
+            for (i in content.indices) {
+                if (content[i] == '"' && (i == 0 || content[i - 1] != '\\')) {
+                    endIndex = i
+                    break
+                }
+            }
+            if (endIndex != -1) {
+                return content.substring(0, endIndex)
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+            }
+        }
+    } catch (_: Exception) {}
+    return errBody
+}
+
 @Composable
 fun HouseDevicesScreen(onBack: () -> Unit, houseId: Int) {
     var devices by remember { mutableStateOf<List<DeviceData>>(emptyList()) }
@@ -241,7 +267,7 @@ fun HouseDevicesScreen(onBack: () -> Unit, houseId: Int) {
                                                         statusMap[device.id] = !newVal
                                                         val errBody = toggleRes.errorBody()?.string() ?: ""
                                                         if (errBody.contains("Safety") || errBody.contains("Cannot")) {
-                                                            errorMsg = "⛔ $errBody"
+                                                            errorMsg = "⛔ ${parseBackendError(errBody)}"
                                                         }
                                                     }
                                                 } catch (e: Exception) {

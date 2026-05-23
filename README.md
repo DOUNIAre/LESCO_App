@@ -75,3 +75,7 @@ LESCO_App/
 
 ## 🔒 Security and Credentials
 Sensitives files, local configuration assets (`.env`, `local.properties`, build caches, and system crash logs) are strictly ignored in `.gitignore` to prevent any exposure of production keys, API tokens, or server credentials. Refer to `.env.example` for environment structures.
+
+
+
+adb reverse tcp:8000 tcp:8000

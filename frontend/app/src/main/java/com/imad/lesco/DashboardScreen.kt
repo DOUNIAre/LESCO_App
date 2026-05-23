@@ -60,14 +60,15 @@ fun DashboardScreen(
 
     var tempVal by remember { mutableStateOf("22 °C") }
     var humidVal by remember { mutableStateOf("49 %") }
-    var indoorsTemp by remember { mutableStateOf("22.0 °C") }
+    var dashboardTime by remember { mutableStateOf(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())) }
 
     var rooms by remember { mutableStateOf<List<RoomResponse>>(emptyList()) }
     var devices by remember { mutableStateOf<List<DeviceResponse>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    val refreshDashboard = {
         scope.launch {
+            loading = true
             try {
                 // Fetch dynamic weather
                 val res = RetrofitInstance.api.getLiveWeather()
@@ -79,48 +80,62 @@ fun DashboardScreen(
             } catch (_: Exception) {}
 
             try {
-                // Fetch user preferred temperature for Indoors display
-                val prefRes = RetrofitInstance.api.getPreferences(token = TokenManager.getAuthHeader())
-                if (prefRes.isSuccessful && prefRes.body() != null) {
-                    val tempPref = prefRes.body()!!.firstOrNull { it.category.equals("temperature", ignoreCase = true) }
-                    if (tempPref != null) {
-                        indoorsTemp = "${tempPref.value} °C"
-                    }
-                }
+                dashboardTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
             } catch (_: Exception) {}
 
             try {
-                // Fetch rooms
-                val rRes = RetrofitInstance.api.getRooms(
-                    token = TokenManager.getAuthHeader(),
-                    houseId = SessionManager.houseId
-                )
-                if (rRes.isSuccessful && rRes.body() != null) {
-                    rooms = rRes.body()!!
-                }
-                
-                // Fetch all house devices
-                val dRes = RetrofitInstance.api.getHouseDevices(
-                    token = TokenManager.getAuthHeader(),
-                    houseId = SessionManager.houseId
-                )
-                if (dRes.isSuccessful && dRes.body() != null) {
-                    devices = dRes.body()!!.map {
-                        DeviceResponse(
-                            id = it.id,
-                            name = it.name ?: "Device",
-                            deviceType = it.deviceType,
-                            roomId = it.roomId,
-                            status = it.status,
-                            value = it.value ?: 0
-                        )
+                if (SessionManager.houseId != -1) {
+                    // Fetch rooms
+                    val rRes = RetrofitInstance.api.getRooms(
+                        token = TokenManager.getAuthHeader(),
+                        houseId = SessionManager.houseId
+                    )
+                    if (rRes.isSuccessful && rRes.body() != null) {
+                        rooms = rRes.body()!!
+                    } else if (rRes.code() == 403) {
+                        SessionManager.houseId = -1
+                        SessionManager.role = "member"
+                        rooms = emptyList()
+                        devices = emptyList()
                     }
+
+                    if (SessionManager.houseId != -1) {
+                        // Fetch all house devices
+                        val dRes = RetrofitInstance.api.getHouseDevices(
+                            token = TokenManager.getAuthHeader(),
+                            houseId = SessionManager.houseId
+                        )
+                        if (dRes.isSuccessful && dRes.body() != null) {
+                            devices = dRes.body()!!.map {
+                                DeviceResponse(
+                                    id = it.id,
+                                    name = it.name ?: "Device",
+                                    deviceType = it.deviceType,
+                                    roomId = it.roomId,
+                                    status = it.status,
+                                    value = it.value ?: 0
+                                )
+                            }
+                        } else if (dRes.code() == 403) {
+                            SessionManager.houseId = -1
+                            SessionManager.role = "member"
+                            rooms = emptyList()
+                            devices = emptyList()
+                        }
+                    }
+                } else {
+                    rooms = emptyList()
+                    devices = emptyList()
                 }
             } catch (_: Exception) {
             } finally {
                 loading = false
             }
         }
+    }
+
+    LaunchedEffect(SessionManager.houseId) {
+        refreshDashboard()
     }
 
 
@@ -290,6 +305,7 @@ fun DashboardScreen(
                 }
             }
 
+
             // Notification Bell Badge on top-right
             Box(
                 modifier = Modifier
@@ -309,6 +325,7 @@ fun DashboardScreen(
                 )
             }
 
+
             // ── Filtres ───────────────────────────────────────────────────────
             Row(
                 modifier = Modifier
@@ -321,8 +338,8 @@ fun DashboardScreen(
                 FilterTab(iconRes = R.drawable.humidite, label = humidVal,    smallText = false)
                 FilterTab(
                     iconRes = R.drawable.house,
-                    label = "Indoors: $indoorsTemp",
-                    smallText = true,
+                    label = dashboardTime,
+                    smallText = false,
                     modifier = Modifier.clickable { onOpenProfile() }
                 )
             }
@@ -341,7 +358,11 @@ fun DashboardScreen(
                 } else if (rooms.isEmpty()) {
                     Spacer(modifier = Modifier.height(50.dp))
                     Text(
-                        text = "No rooms or devices yet.\nPlease add rooms in Room Management.",
+                        text = if (SessionManager.houseId == -1) {
+                            "You are not assigned to a house.\nPlease join or create a house in profile."
+                        } else {
+                            "No rooms or devices yet.\nPlease add rooms in Room Management."
+                        },
                         color = Color(0xFFBFD6D1),
                         fontSize = 16.sp,
                         textAlign = TextAlign.Center,
@@ -796,5 +817,33 @@ val NotificationBellIcon: ImageVector
         lineTo(20f, 19f)
         lineTo(20f, 18f)
         lineTo(18f, 16f)
+        close()
+    }.build()
+
+val RefreshIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Refresh",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).path(
+        fill = SolidColor(Color(0xFF5DF3D4)), // LescoPrimary
+        strokeLineWidth = 0f
+    ) {
+        moveTo(17.65f, 6.35f)
+        curveTo(16.2f, 4.9f, 14.21f, 4f, 12f, 4f)
+        curveTo(7.58f, 4f, 4.01f, 7.58f, 4.01f, 12f)
+        curveTo(4.01f, 16.42f, 7.58f, 20f, 12f, 20f)
+        curveTo(15.73f, 20f, 18.84f, 17.45f, 19.73f, 14f)
+        lineTo(17.65f, 14f)
+        curveTo(16.83f, 16.33f, 14.61f, 18f, 12f, 18f)
+        curveTo(8.69f, 18f, 6f, 15.31f, 6f, 12f)
+        curveTo(6f, 8.69f, 8.69f, 6f, 12f, 6f)
+        curveTo(13.66f, 6f, 15.14f, 6.78f, 16.11f, 8f)
+        lineTo(13f, 11f)
+        lineTo(20f, 11f)
+        lineTo(20f, 4f)
+        lineTo(17.65f, 6.35f)
         close()
     }.build()

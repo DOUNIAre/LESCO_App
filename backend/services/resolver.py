@@ -133,3 +133,53 @@ def resolve_conflicts(db: Session, room_id: int, device_type: str):
         weights_off = sum(_get_user_weight(db, p.user_id, house_id) for p in prefs if p.value == 0)
         # In a tie, prefer OFF (energy saving)
         return 1 if weights_on > weights_off else 0
+
+
+def has_preference_conflict(db: Session, room_id: int, device_type: str) -> bool:
+    """
+    Checks if there is a preference conflict among the assigned users in the room
+    for the given device type. A conflict only exists if:
+      1. There are multiple users assigned to the room.
+      2. At least two of them have registered preferences for this device type/alias category.
+      3. Their registered preference values differ.
+    """
+    device_type = device_type.upper()
+    assignments = db.query(models.RoomAssignment).filter(
+        models.RoomAssignment.room_id == room_id
+    ).all()
+    assigned_user_ids = [a.user_id for a in assignments]
+    if len(assigned_user_ids) <= 1:
+        return False
+
+    prefs = []
+    aliases = CATEGORY_ALIASES.get(device_type, [device_type])
+    
+    for uid in assigned_user_ids:
+        found = False
+        # Try HOME context first
+        for alias_cat in aliases:
+            p = db.query(models.UserPreference).filter(
+                models.UserPreference.user_id == uid,
+                models.UserPreference.category == alias_cat,
+                models.UserPreference.context == "HOME"
+            ).first()
+            if p:
+                prefs.append(p)
+                found = True
+                break
+        if not found:
+            # Try any context
+            for alias_cat in aliases:
+                p = db.query(models.UserPreference).filter(
+                    models.UserPreference.user_id == uid,
+                    models.UserPreference.category == alias_cat
+                ).first()
+                if p:
+                    prefs.append(p)
+                    break
+
+    if len(prefs) <= 1:
+        return False
+
+    values = [p.value for p in prefs]
+    return len(set(values)) > 1

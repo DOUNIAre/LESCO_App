@@ -16,6 +16,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
+private fun parseBackendError(errBody: String): String {
+    try {
+        val detailKey = "\"detail\":"
+        if (errBody.contains(detailKey)) {
+            val startIndex = errBody.indexOf(detailKey) + detailKey.length
+            var content = errBody.substring(startIndex).trim()
+            if (content.startsWith("\"")) {
+                content = content.substring(1)
+            }
+            var endIndex = -1
+            for (i in content.indices) {
+                if (content[i] == '"' && (i == 0 || content[i - 1] != '\\')) {
+                    endIndex = i
+                    break
+                }
+            }
+            if (endIndex != -1) {
+                return content.substring(0, endIndex)
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+            }
+        }
+    } catch (_: Exception) {}
+    return errBody
+}
+
 @Composable
 fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit) {
     var devices  by remember { mutableStateOf<List<DeviceResponse>>(emptyList()) }
@@ -304,7 +330,7 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                                     val errBody = res.errorBody()?.string() ?: ""
                                                     statusMap[device.id] = !newVal
                                                     if (errBody.contains("Safety") || errBody.contains("Cannot")) {
-                                                        errorMsg = "⛔ $errBody"
+                                                        errorMsg = "⛔ ${parseBackendError(errBody)}"
                                                     }
                                                 }
                                             } catch (e: Exception) {
@@ -380,7 +406,7 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                                 } else {
                                                     val errBody = res.errorBody()?.string() ?: ""
                                                     if (errBody.contains("Safety") || errBody.contains("Cannot")) {
-                                                        errorMsg = "⛔ $errBody"
+                                                        errorMsg = "⛔ ${parseBackendError(errBody)}"
                                                     }
                                                 }
                                             } catch (_: Exception) {

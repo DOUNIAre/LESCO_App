@@ -23,6 +23,6 @@ def check_all_rules(db: Session, room_id: int, target_device_type: str, target_s
                 # Check if the forbidden device is active in this room
                 for dev in active_devices:
                     if dev.device_type.upper() == rule.forbidden_device_type.upper():
-                        return False, f"Rule '{rule.name}' (Priority {rule.priority}): Cannot turn on {target_device_type.upper()} while {rule.forbidden_device_type.upper()} is running."
+                        return False, f"Cannot turn on {target_device_type.upper()} while {rule.forbidden_device_type.upper()} is on."
 
     return True, "Safe"

@@ -345,6 +345,8 @@ def get_rooms(
         models.Membership.user_id == current_user.id,
         models.Membership.house_id == house_id
     ).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
     is_owner = (membership and membership.role == "owner")
     
     if is_owner:
@@ -353,10 +355,12 @@ def get_rooms(
         assignments = db.query(models.RoomAssignment).filter(
             models.RoomAssignment.user_id == current_user.id
         ).all()
-        assigned_room_ids = {a.room_id for a in assignments}
+        assigned_room_ids = [a.room_id for a in assignments]
+        if not assigned_room_ids:
+            return []
         return db.query(models.Room).filter(
             models.Room.house_id == house_id,
-            (models.Room.id.in_(assigned_room_ids) | (models.Room.room_type == "shared"))
+            models.Room.id.in_(assigned_room_ids)
         ).all()
 
 
@@ -423,6 +427,8 @@ def get_all_house_devices(
         models.Membership.user_id == current_user.id,
         models.Membership.house_id == house_id
     ).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
     is_owner = (membership and membership.role == "owner")
 
     if is_owner:
@@ -433,10 +439,12 @@ def get_all_house_devices(
         assignments = db.query(models.RoomAssignment).filter(
             models.RoomAssignment.user_id == current_user.id
         ).all()
-        assigned_room_ids = {a.room_id for a in assignments}
+        assigned_room_ids = [a.room_id for a in assignments]
+        if not assigned_room_ids:
+            return []
         devices = db.query(models.SmartDevice).join(models.Room).filter(
             models.Room.house_id == house_id,
-            (models.Room.id.in_(assigned_room_ids) | (models.Room.room_type == "shared"))
+            models.Room.id.in_(assigned_room_ids)
         ).all()
     return devices
 
@@ -464,22 +472,22 @@ def toggle_device(
         ).first()
         is_owner = membership is not None
 
-    if not is_owner:
-        if room and room.room_type == "shared":
-            # Any member of the house can control devices in a shared room
-            membership = db.query(models.Membership).filter(
-                models.Membership.user_id == current_user.id,
-                models.Membership.house_id == room.house_id
-            ).first()
-            if not membership:
-                raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
-        else:
-            assignment = db.query(models.RoomAssignment).filter(
-                models.RoomAssignment.user_id == current_user.id,
-                models.RoomAssignment.room_id == device.room_id
-            ).first()
-            if not assignment:
-                raise HTTPException(status_code=403, detail="Access Denied: You are not assigned to this personal room.")
+    if room and room.room_type == "shared":
+        # Any member (including owner) can control shared room devices
+        membership = db.query(models.Membership).filter(
+            models.Membership.user_id == current_user.id,
+            models.Membership.house_id == room.house_id
+        ).first()
+        if not membership:
+            raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
+    else:
+        # Personal room: only the assigned member can toggle — owner is blocked
+        assignment = db.query(models.RoomAssignment).filter(
+            models.RoomAssignment.user_id == current_user.id,
+            models.RoomAssignment.room_id == device.room_id
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access Denied: Only the assigned member can control devices in a personal room.")
 
     # Conflict detection: if >1 user in room, trigger resolver
     # Safety rule check first (Hard safety constraints must never be bypassed)
@@ -488,14 +496,15 @@ def toggle_device(
         raise HTTPException(status_code=400, detail=msg)
 
     # Conflict detection
-    user_count = db.query(models.RoomAssignment).filter(
-        models.RoomAssignment.room_id == device.room_id
-    ).count()
-    if user_count > 1:
-        return {
-            "status": "conflict_detected",
-            "message": f"There are {user_count} users in this room. Use 'Apply Logic' to resolve."
-        }
+    if room and room.room_type == "shared":
+        if resolver.has_preference_conflict(db, device.room_id, device.device_type):
+            user_count = db.query(models.RoomAssignment).filter(
+                models.RoomAssignment.room_id == device.room_id
+            ).count()
+            return {
+                "status": "conflict_detected",
+                "message": f"There are {user_count} users in this room. Use 'Apply Logic' to resolve."
+            }
 
     # Execute & log
     device.status = not device.status
@@ -529,31 +538,33 @@ def set_device_value(
         ).first()
         is_owner = membership is not None
 
-    if not is_owner:
-        if room and room.room_type == "shared":
-            membership = db.query(models.Membership).filter(
-                models.Membership.user_id == current_user.id,
-                models.Membership.house_id == room.house_id
-            ).first()
-            if not membership:
-                raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
-        else:
-            assignment = db.query(models.RoomAssignment).filter(
-                models.RoomAssignment.user_id == current_user.id,
-                models.RoomAssignment.room_id == device.room_id
-            ).first()
-            if not assignment:
-                raise HTTPException(status_code=403, detail="Access Denied: You are not assigned to this personal room.")
+    if room and room.room_type == "shared":
+        # Any member (including owner) can set values in shared rooms
+        membership = db.query(models.Membership).filter(
+            models.Membership.user_id == current_user.id,
+            models.Membership.house_id == room.house_id
+        ).first()
+        if not membership:
+            raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
+    else:
+        # Personal room: only the assigned member can set values — owner is blocked
+        assignment = db.query(models.RoomAssignment).filter(
+            models.RoomAssignment.user_id == current_user.id,
+            models.RoomAssignment.room_id == device.room_id
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access Denied: Only the assigned member can control devices in a personal room.")
 
-    # Conflict detection: if >1 user in room, trigger resolver
-    user_count = db.query(models.RoomAssignment).filter(
-        models.RoomAssignment.room_id == device.room_id
-    ).count()
-    if user_count > 1:
-        return {
-            "status": "conflict_detected",
-            "message": f"There are {user_count} users in this room. Use 'Apply Logic' to resolve."
-        }
+    # Conflict detection: if >1 user in room and they have conflicting preferences, trigger resolver
+    if room and room.room_type == "shared":
+        if resolver.has_preference_conflict(db, device.room_id, device.device_type):
+            user_count = db.query(models.RoomAssignment).filter(
+                models.RoomAssignment.room_id == device.room_id
+            ).count()
+            return {
+                "status": "conflict_detected",
+                "message": f"There are {user_count} users in this room. Use 'Apply Logic' to resolve."
+            }
 
     val = int(payload.get("value", 0))
 
@@ -683,6 +694,8 @@ def get_ai_recommendation(
         models.Membership.user_id == current_user.id,
         models.Membership.house_id == house_id
     ).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
     is_owner = (membership and membership.role == "owner")
 
     rooms = db.query(models.Room).filter(models.Room.house_id == house_id).all()
@@ -691,7 +704,7 @@ def get_ai_recommendation(
             models.RoomAssignment.user_id == current_user.id
         ).all()
         assigned_room_ids = {a.room_id for a in assignments}
-        rooms = [r for r in rooms if r.id in assigned_room_ids or r.room_type.lower() == "shared"]
+        rooms = [r for r in rooms if r.id in assigned_room_ids]
 
     all_devices = []
     for room in rooms:
@@ -753,8 +766,38 @@ def submit_feedback(fb: schemas.FeedbackCreate, db: Session = Depends(get_db)):
                 ).first()
                 is_owner = membership is not None
                 
-                if not is_owner:
-                    if room.room_type.lower() != "shared":
+                # Segmented Governance for Personal Rooms:
+                if room.room_type == "personal":
+                    # Determine recommendation intent (Comfort vs Energy Saving)
+                    content_lower = (rec.content or "").lower()
+                    is_energy_saving = ("off" in content_lower) or ("saving" in content_lower) or (rec.proposed_value == 0)
+                    
+                    if not is_energy_saving:
+                        # Comfort recommendation: strictly only the assigned occupant can interact
+                        assignment = db.query(models.RoomAssignment).filter(
+                            models.RoomAssignment.user_id == fb.user_id,
+                            models.RoomAssignment.room_id == room.id
+                        ).first()
+                        if not assignment:
+                            raise HTTPException(
+                                status_code=403, 
+                                detail="Access Denied: Comfort recommendations in personal rooms can only be accepted by the assigned member."
+                            )
+                    else:
+                        # Energy Saving recommendation: owner OR assigned member can interact
+                        if not is_owner:
+                            assignment = db.query(models.RoomAssignment).filter(
+                                models.RoomAssignment.user_id == fb.user_id,
+                                models.RoomAssignment.room_id == room.id
+                            ).first()
+                            if not assignment:
+                                raise HTTPException(
+                                    status_code=403, 
+                                    detail="Access Denied: You are not assigned to this personal room to interact with energy savings."
+                                )
+                else:
+                    # Shared Rooms: any assigned house member or owner can interact
+                    if not is_owner:
                         assignment = db.query(models.RoomAssignment).filter(
                             models.RoomAssignment.user_id == fb.user_id,
                             models.RoomAssignment.room_id == room.id
@@ -921,6 +964,14 @@ def get_house_summary(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_user)
 ):
+    # Verify membership
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == house_id
+    ).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
+
     house = db.query(models.House).filter(models.House.id == house_id).first()
     if not house:
         raise HTTPException(status_code=404, detail="House not found")
@@ -976,6 +1027,8 @@ def get_house_history(
         models.Membership.user_id == current_user.id,
         models.Membership.house_id == house_id
     ).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Access Denied: You are not a member of this house.")
 
     is_owner = membership and membership.role == "owner"
 
@@ -1030,6 +1083,31 @@ def assign_user_to_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
+    # Authorize: Only the house owner can assign users to rooms
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == room.house_id
+    ).first()
+    if not membership or membership.role != "owner":
+        raise HTTPException(status_code=403, detail="Access Denied: Only the house owner can manage room assignments.")
+
+    # Constraints on personal rooms
+    if room.room_type == "personal":
+        # Block assigning an owner to a personal room
+        target_membership = db.query(models.Membership).filter(
+            models.Membership.user_id == user_id,
+            models.Membership.house_id == room.house_id
+        ).first()
+        if target_membership and target_membership.role == "owner":
+            raise HTTPException(status_code=400, detail="Cannot assign the house owner to a personal room.")
+
+        # Personal room can only have at most 1 assigned user
+        existing_assignments = db.query(models.RoomAssignment).filter(
+            models.RoomAssignment.room_id == room_id
+        ).all()
+        if existing_assignments and any(a.user_id != user_id for a in existing_assignments):
+            raise HTTPException(status_code=400, detail="Personal rooms can only have one assigned member.")
+
     existing = db.query(models.RoomAssignment).filter(
         models.RoomAssignment.room_id == room_id,
         models.RoomAssignment.user_id == user_id
@@ -1049,6 +1127,18 @@ def unassign_user_from_room(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_user)
 ):
+    room = db.query(models.Room).filter(models.Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # Authorize: Only the house owner can unassign users from rooms
+    membership = db.query(models.Membership).filter(
+        models.Membership.user_id == current_user.id,
+        models.Membership.house_id == room.house_id
+    ).first()
+    if not membership or membership.role != "owner":
+        raise HTTPException(status_code=403, detail="Access Denied: Only the house owner can manage room assignments.")
+
     assignment = db.query(models.RoomAssignment).filter(
         models.RoomAssignment.room_id == room_id,
         models.RoomAssignment.user_id == user_id
@@ -1091,9 +1181,9 @@ def mark_notification_read(
     ).first()
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found")
-    notif.is_read = True
+    db.delete(notif)
     db.commit()
-    return {"message": "Marked as read"}
+    return {"message": "Notification deleted"}
 
 
 # ── PASSWORD RESET ────────────────────────────────────────────────────────────
