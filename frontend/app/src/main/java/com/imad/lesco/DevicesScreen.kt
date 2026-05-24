@@ -395,9 +395,8 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                                                     body     = mapOf("value" to numVal)
                                                 )
                                                 if (res.isSuccessful) {
-                                                    val body   = res.body()
-                                                    val status = body?.get("status")?.toString() ?: ""
-                                                    if (status == "conflict_detected") {
+                                                    val body = res.body()
+                                                    if (body?.status == "conflict_detected") {
                                                         // Block the set — show conflict dialog
                                                         conflictDevice     = device
                                                         showConflictDialog = true
