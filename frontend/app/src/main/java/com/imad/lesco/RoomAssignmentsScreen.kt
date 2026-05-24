@@ -13,6 +13,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+
+private fun parseBackendError(errorBody: String?): String {
+    if (errorBody == null) return "Request failed."
+    return try {
+        JSONObject(errorBody).optString("detail", "Request failed.")
+    } catch (_: Exception) {
+        "Request failed."
+    }
+}
 
 @Composable
 fun RoomAssignmentsScreen(onBack: () -> Unit) {
@@ -44,8 +54,7 @@ fun RoomAssignmentsScreen(onBack: () -> Unit) {
                 }
                 
                 if (membersRes.isSuccessful && membersRes.body() != null) {
-                    // Exclude the owner — this screen is for assigning regular members only
-                    members = membersRes.body()!!.filter { it.role.lowercase() != "owner" }
+                    members = membersRes.body()!!
                     selectedMemberId = members.firstOrNull()?.id
                 }
             } catch (_: Exception) {
@@ -184,7 +193,7 @@ fun RoomAssignmentsScreen(onBack: () -> Unit) {
                                     statusMsg = "$memberName assigned to $roomName successfully."
                                     isSuccess = true
                                 } else {
-                                    statusMsg = "Assignment failed."
+                                    statusMsg = parseBackendError(res.errorBody()?.string())
                                     isSuccess = false
                                 }
                             } catch (e: Exception) {
@@ -221,12 +230,7 @@ fun RoomAssignmentsScreen(onBack: () -> Unit) {
                                     statusMsg = "$memberName unassigned from $roomName successfully."
                                     isSuccess = true
                                 } else {
-                                    val errBody = res.errorBody()?.string()
-                                    statusMsg = if (errBody != null && errBody.contains("Assignment not found")) {
-                                        "This member is not assigned to this room."
-                                    } else {
-                                        "Unassignment failed."
-                                    }
+                                    statusMsg = parseBackendError(res.errorBody()?.string())
                                     isSuccess = false
                                 }
                             } catch (e: Exception) {

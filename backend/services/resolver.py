@@ -32,6 +32,8 @@ def _weighted_median(values: list, weights: list) -> float:
     Compute the true weighted median.
     Sorts (value, weight) pairs by value, then finds the
     midpoint of the cumulative weight distribution.
+    If the cumulative weight is exactly half of the total weight,
+    it averages with the next value to get a true median.
     """
     if not values:
         return 0.0
@@ -46,9 +48,14 @@ def _weighted_median(values: list, weights: list) -> float:
     # Walk cumulative weights until we cross the 50% mark
     cumulative = 0.0
     half = total_weight / 2.0
-    for val, w in pairs:
+    for i, (val, w) in enumerate(pairs):
         cumulative += w
-        if cumulative >= half:
+        if cumulative > half:
+            return float(val)
+        elif cumulative == half:
+            # Exactly at the midpoint — average this value and the next one
+            if i + 1 < len(pairs):
+                return float(val + pairs[i+1][0]) / 2.0
             return float(val)
 
     return float(pairs[-1][0])
@@ -89,12 +96,12 @@ def resolve_conflicts(db: Session, room_id: int, device_type: str):
     
     for uid in assigned_user_ids:
         found = False
-        # Try to find a preference matching aliases in the HOME context first
+        # Try to find a preference matching aliases in the HOME context first (case-insensitive)
         for alias_cat in aliases:
             p = db.query(models.UserPreference).filter(
                 models.UserPreference.user_id == uid,
-                models.UserPreference.category == alias_cat,
-                models.UserPreference.context == "HOME"
+                models.UserPreference.category.ilike(alias_cat),
+                models.UserPreference.context.ilike("HOME")
             ).first()
             if p:
                 prefs.append(p)
@@ -106,7 +113,7 @@ def resolve_conflicts(db: Session, room_id: int, device_type: str):
             for alias_cat in aliases:
                 p = db.query(models.UserPreference).filter(
                     models.UserPreference.user_id == uid,
-                    models.UserPreference.category == alias_cat
+                    models.UserPreference.category.ilike(alias_cat)
                 ).first()
                 if p:
                     prefs.append(p)
@@ -160,8 +167,8 @@ def has_preference_conflict(db: Session, room_id: int, device_type: str) -> bool
         for alias_cat in aliases:
             p = db.query(models.UserPreference).filter(
                 models.UserPreference.user_id == uid,
-                models.UserPreference.category == alias_cat,
-                models.UserPreference.context == "HOME"
+                models.UserPreference.category.ilike(alias_cat),
+                models.UserPreference.context.ilike("HOME")
             ).first()
             if p:
                 prefs.append(p)
@@ -172,7 +179,7 @@ def has_preference_conflict(db: Session, room_id: int, device_type: str) -> bool
             for alias_cat in aliases:
                 p = db.query(models.UserPreference).filter(
                     models.UserPreference.user_id == uid,
-                    models.UserPreference.category == alias_cat
+                    models.UserPreference.category.ilike(alias_cat)
                 ).first()
                 if p:
                     prefs.append(p)

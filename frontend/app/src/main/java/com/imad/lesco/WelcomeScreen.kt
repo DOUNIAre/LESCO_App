@@ -82,6 +82,12 @@ fun AppNavigation() {
                         }
                     }
                 },
+                onJoinedAsMember = {
+                    // Member just joined via invite code → must set up preferences first
+                    navController.navigate("preferences?firstTime=true") {
+                        popUpTo("welcome") { inclusive = false }
+                    }
+                },
                 onBack = { navController.popBackStack() }
             )
         }

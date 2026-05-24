@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 @Composable
-fun HouseSetupScreen(onContinue: () -> Unit, onBack: (() -> Unit)? = null) {
+fun HouseSetupScreen(onContinue: () -> Unit, onJoinedAsMember: () -> Unit = onContinue, onBack: (() -> Unit)? = null) {
     var houseName   by remember { mutableStateOf("") }
     var inviteCode  by remember { mutableStateOf("") }
     var errorMsg    by remember { mutableStateOf("") }
@@ -104,7 +104,7 @@ fun HouseSetupScreen(onContinue: () -> Unit, onBack: (() -> Unit)? = null) {
                                     // ── Save house_id from the join response ──
                                     SessionManager.houseId = res.body()!!.houseId
                                     SessionManager.role    = "member"
-                                    onContinue()
+                                    onJoinedAsMember()  // → redirect to preferences setup
                                 } else {
                                     errorMsg = "Invalid invite code. Try again."
                                 }

@@ -48,6 +48,7 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
     var roomName by remember { mutableStateOf("Loading...") }
     var errorMsg by remember { mutableStateOf("") }
     var loading  by remember { mutableStateOf(true) }
+    var roomType by remember { mutableStateOf("shared") }
     val scope    = rememberCoroutineScope()
 
     // Per-device UI state maps
@@ -92,6 +93,7 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                 if (roomsRes.isSuccessful && roomsRes.body() != null) {
                     val rObj = roomsRes.body()!!.find { it.id == roomId }
                     roomName = rObj?.name ?: "Room #$roomId"
+                    roomType = rObj?.roomType ?: "shared"
                 }
             } catch (_: Exception) {
                 roomName = "Room #$roomId"
@@ -424,12 +426,18 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            GlassButton(
-                text           = "Add Device",
-                textColor      = LescoNavy,
-                containerColor = LescoPrimary,
-                onClick        = onAddDeviceClick
-            )
+            val isSharedRoom = roomType.uppercase() == "SHARED"
+            val isOwner = SessionManager.isOwner()
+            val canAddDevice = isOwner || !isSharedRoom
+
+            if (canAddDevice) {
+                GlassButton(
+                    text           = "Add Device",
+                    textColor      = LescoNavy,
+                    containerColor = LescoPrimary,
+                    onClick        = onAddDeviceClick
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
     }

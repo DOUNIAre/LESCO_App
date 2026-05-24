@@ -289,8 +289,8 @@ def create_room(
         for m in all_memberships:
             db.add(models.RoomAssignment(user_id=m.user_id, room_id=new_room.id))
     else:
-        # Personal room — only assign the creator
-        db.add(models.RoomAssignment(user_id=current_user.id, room_id=new_room.id))
+        # Personal room — no auto-assignment. Owner assigns a member explicitly via /assign endpoint.
+        pass
 
     db.commit()
     return new_room
@@ -388,7 +388,9 @@ def add_device(
         
     is_owner = membership.role == "owner"
     if not is_owner:
-        if room.room_type.lower() != "shared":
+        if room.room_type.lower() == "shared":
+            raise HTTPException(status_code=403, detail="Access Denied: Only the house owner can add devices to shared rooms.")
+        else:
             assignment = db.query(models.RoomAssignment).filter(
                 models.RoomAssignment.user_id == current_user.id,
                 models.RoomAssignment.room_id == room.id
@@ -640,7 +642,7 @@ def apply_conflict_resolution(
 
     for d in matching_devices:
         target_status = d.status
-        if category.upper() in ["LIGHT", "AC", "HEATER", "FAN"]:
+        if category.upper() in ["LIGHT", "AC", "HEATER", "FAN", "TV"]:
             target_status = True if final_value > 0 else False
 
         # Safety rule check
@@ -1093,14 +1095,6 @@ def assign_user_to_room(
 
     # Constraints on personal rooms
     if room.room_type == "personal":
-        # Block assigning an owner to a personal room
-        target_membership = db.query(models.Membership).filter(
-            models.Membership.user_id == user_id,
-            models.Membership.house_id == room.house_id
-        ).first()
-        if target_membership and target_membership.role == "owner":
-            raise HTTPException(status_code=400, detail="Cannot assign the house owner to a personal room.")
-
         # Personal room can only have at most 1 assigned user
         existing_assignments = db.query(models.RoomAssignment).filter(
             models.RoomAssignment.room_id == room_id
