@@ -1,5 +1,6 @@
 package com.imad.lesco
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -218,12 +219,22 @@ fun DevicesScreen(onBack: () -> Unit, roomId: Int, onAddDeviceClick: () -> Unit)
                 modifier   = Modifier.padding(bottom = 16.dp)
             )
 
+            // Auto-dismiss error after 3 seconds
+            LaunchedEffect(errorMsg) {
+                if (errorMsg.isNotEmpty()) {
+                    kotlinx.coroutines.delay(3000)
+                    errorMsg = ""
+                }
+            }
+
             if (errorMsg.isNotEmpty()) {
                 Text(
                     errorMsg,
                     color    = Color(0xFFFF4444),
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .clickable { errorMsg = "" }
                 )
             }
 
